@@ -13,6 +13,6 @@ aws-config = "^0.8"
 aws-sdk-dynamodb = "^0.8"
 env_logger = "^0.8"
 log = "^0.4"
-strum_macros = "^0.24"
+strum_macros = "0.24"
 strum = { version = "^0.24", features = ["derive"] }
-#derive_more = "^0.99" # replaced with strum (has same functionality)
+derive_more = "^0.99" # replaced with strum (has same functionality)
