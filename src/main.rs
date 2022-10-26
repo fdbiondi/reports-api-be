@@ -1,10 +1,15 @@
 mod api;
 
-use api::task::{
-    get_task
-}
+use api::reports::{
+    get_report
+};
 
-use actix_web::{HttpServer, App, web::Data, middleware::Logger};
+use actix_web::{get, App, HttpResponse, HttpServer, Responder, middleware::Logger};
+
+#[get("/")]
+async fn hello() -> impl Responder {
+    HttpResponse::Ok().json("Hello from rust and reporter!")
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -12,12 +17,12 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
-    HttpServer::new(move || {
-        App::new()
-        .wrap(Logger::default())
-        .service(get_task);
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await;
+    HttpServer::new(|| 
+            App::new()
+            .wrap(Logger::default())
+            .service(get_report)
+        )
+        .bind(("0.0.0.0", 80))?
+        .run()
+        .await
 }
