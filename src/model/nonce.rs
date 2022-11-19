@@ -22,7 +22,7 @@ impl From<sqERR> for NonceErr {
 }
 
 fn open_connection() -> Result<Connection, sqERR> {
-    let conn = sqlite::open("../data/mydb.sqlite")?;
+    let conn = sqlite::open("../../data/mydb.sqlite")?;
 
     Ok(conn)
 }
