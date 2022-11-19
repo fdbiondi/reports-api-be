@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  rust_dev:
+    build: 
+      context: .
+    volumes:
+      - .:/usr/src/myapp
+    environment:
+      - USER=fdbiondi
+    ports:
+      - 8080:80
+    networks:
+      - rust-net
+    command: >
+       bash -c "cargo watch -c -w src -x run"
+    # bash -c "cargo build && cargo run"
+
+networks:
+  rust-net:
+    driver: bridge
