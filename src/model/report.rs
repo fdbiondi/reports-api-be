@@ -80,16 +80,16 @@ impl Report {
         description: String,
     ) -> Result<Report, ReportErr> {
         let conn = open_connection()?;
-        let mut db =
-            conn.prepare("INSERT INTO reports (uuid, signature, description, title, state) VALUES (?, ?, ?, ?, ?);")?;
+        let query = "INSERT INTO reports (uuid, signature, description, title, state) VALUES (:uuid, :signature, :description, :title, :state);";
+        let mut db = conn.prepare(query)?;
 
         let report = Report::new(signature, title, description);
 
-        db.bind((1, report.uuid.as_bytes()))?;
-        db.bind((2, report.signature.as_bytes()))?;
-        db.bind((3, report.description.as_bytes()))?;
-        db.bind((4, report.title.as_bytes()))?;
-        db.bind((5, report.state.to_string().as_bytes()))?;
+        db.bind((":uuid", report.uuid.as_str()))?;
+        db.bind((":signature", report.signature.as_str()))?;
+        db.bind((":description", report.description.as_str()))?;
+        db.bind((":title", report.title.as_str()))?;
+        db.bind((":state", report.state.to_string().as_str()))?;
         db.next()?;
 
         Ok(report)

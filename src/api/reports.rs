@@ -1,26 +1,18 @@
 #[path = "../model/mod.rs"]
 mod model;
 
-use actix_web::{get, post, web, HttpResponse, Responder, ResponseError, Result as AWResult};
+use model::nonce::Nonce;
+use model::report::{Report, ReportErr};
+
+use actix_web::{get, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 #[get("/reports/{signature}")]
-pub async fn get_report(signature: web::Path<String>) -> AWResult<impl Responder> {
-    // TODO
-
-    // find report by signature -> SELECT * FROM reports where signature = ?
-
-    // if fails -> return 404
-
-    // if finded -> return report
-
-    let report = model::report::Report::new(
-        signature.to_string(),
-        "title desc".to_string(),
-        "test desc".to_string(),
-    );
-
-    Ok(web::Json(report))
+pub async fn get_report(signature: web::Path<String>) -> Result<HttpResponse, ReportErr> {
+    match Report::find(signature.to_string()) {
+        Ok(res) => Ok(HttpResponse::Created().json(res)),
+        Err(err) => Err(err), // TODO if fails -> return 404
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -34,7 +26,7 @@ pub struct PostReportRequest {
 #[post("/reports")]
 pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
     // create report from data
-    let report = model::report::Report::new(
+    let report = Report::create(
         data.signature.to_string(),
         data.title.to_string(),
         data.description.to_string(),
@@ -42,13 +34,21 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
 
     // find nonce from signature -> SELECT * FROM nonces where signature = ?
 
-    // if exists
-    // update nonce -> UPDATE nonces SET nonce = ? WHERE signature = ?
+    let mut nonce = Nonce::find(data.nonce.to_string());
 
-    // if not exists
-    // insert nonce
+    if Some(nonce) {
+        // if exists -> update nonce -> UPDATE nonces SET nonce = ? WHERE signature = ?
+        nonce.update();
+    } else {
+        // if not exists -> insert nonce
+        nonce = Nonce::create(data.nonce.to_string());
+    }
+
+    /* match Nonce::find(data.nonce.to_string()) {
+        Some(nonce) => nonce.update(),
+        None => Nonce::create(data.nonce.to_string()),
+    } */
 
     // return nonce
-
-    HttpResponse::Created().json(report)
+    HttpResponse::Created().json(nonce)
 }

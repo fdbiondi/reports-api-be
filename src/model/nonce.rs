@@ -39,9 +39,9 @@ impl Nonce {
 
         let nonce = Nonce::new(signature);
 
-        db.bind((1, nonce.uuid.as_bytes()))?;
-        db.bind((2, nonce.signature.as_bytes()))?;
-        db.bind((3, nonce.nonce.to_string().as_bytes()))?;
+        db.bind((1, nonce.uuid.as_str()))?;
+        db.bind((2, nonce.signature.as_str()))?;
+        db.bind((3, nonce.nonce.to_string().as_str()))?;
         db.next()?;
 
         Ok(nonce.uuid)
