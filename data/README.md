@@ -8,11 +8,11 @@
 
 #### create reports table
 
-`CREATE TABLE reports (signature NVARCHAR(132) PRIMARY KEY NOT NULL, description TEXT NOT NULL, title NVARCHAR(50) NOT NULL);`
+`CREATE TABLE reports (uuid NVARCHAR(36) UNIQUE NOT NULL, signature NVARCHAR(132) PRIMARY KEY NOT NULL, description TEXT NOT NULL, title NVARCHAR(50) NOT NULL, state NVARCHAR(12) NOT NULL);`
 
 #### create nonces table
 
-`CREATE TABLE nonces (signature NVARCHAR(132) PRIMARY KEY NOT NULL, nonce INTEGER NOT NULL);`
+`CREATE TABLE nonces (uuid NVARCHAR(36) UNIQUE NOT NULL, signature NVARCHAR(132) PRIMARY KEY NOT NULL, nonce INTEGER NOT NULL);`
 
 #### select report by signature
 
@@ -24,11 +24,11 @@
 
 #### create new report
 
-`INSERT INTO reports (signature, description, title) VALUES (?,?,?)`
+`INSERT INTO reports (uuid, signature, description, title, state) VALUES (?,?,?,?,?)`
 
 #### create new nonce
 
-`INSERT INTO nonces (signature, nonce) VALUES(?,?)`
+`INSERT INTO nonces (uuid, signature, nonce) VALUES(?,?)`
 
 #### update nonce
 
