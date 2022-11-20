@@ -32,16 +32,16 @@ fn open_connection() -> Result<Connection, sqERR> {
 impl Nonce {
     // get nonce -> search by signature
 
-    pub fn add(signature: String) -> Result<String, NonceErr> {
+    pub fn create(signature: String) -> Result<String, NonceErr> {
         let conn = open_connection()?;
         let mut db =
             conn.prepare("INSERT INTO nonces (uuid, signature, nonce) VALUES (?, ?, ?);")?;
 
         let nonce = Nonce::new(signature);
 
-        db.bind(1, nonce.uuid.as_bytes())?;
-        db.bind(2, nonce.signature.as_bytes())?;
-        db.bind(3, nonce.nonce.to_string().as_bytes())?;
+        db.bind((1, nonce.uuid.as_bytes()))?;
+        db.bind((2, nonce.signature.as_bytes()))?;
+        db.bind((3, nonce.nonce.to_string().as_bytes()))?;
         db.next()?;
 
         Ok(nonce.uuid)
