@@ -1,5 +1,6 @@
 mod api;
 
+use api::nonces::get_nonce;
 use api::reports::{create_report, get_report};
 
 use actix_web::{middleware::Logger, App, HttpServer};
@@ -13,6 +14,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .wrap(Logger::default())
+            .service(get_nonce)
             .service(get_report)
             .service(create_report)
     })
