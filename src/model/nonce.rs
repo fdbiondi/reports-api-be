@@ -1,6 +1,6 @@
 use core::result::Result;
 use serde::Serialize;
-use sqlite::{Connection, Error as sqERR};
+use sqlite::{Connection, Error as sqERR, State as StateSQLite};
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -96,11 +96,14 @@ impl Nonce {
         statement.bind((":signature", nonce.as_str()));
 
         match statement.next() {
-            Ok(_) => Ok(Nonce {
-                uuid: statement.read::<String, _>(0).unwrap(),
-                signature: statement.read::<String, _>(1).unwrap(),
-                nonce: statement.read::<i64, _>(1).unwrap() as i32,
-            }),
+            Ok(state) => match state {
+                StateSQLite::Row => Ok(Nonce {
+                    uuid: statement.read::<String, _>(0).unwrap(),
+                    signature: statement.read::<String, _>(1).unwrap(),
+                    nonce: statement.read::<i64, _>(1).unwrap() as i32,
+                }),
+                StateSQLite::Done => Err("Not Found".to_string()),
+            },
             Err(_) => Err("Not Found".to_string()),
         }
     }

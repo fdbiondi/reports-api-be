@@ -6,18 +6,18 @@ use actix_web::{
 };
 
 use serde::Serialize;
-use sqlite::{Connection, Error as sqERR};
+use sqlite::{Connection, Error as sqERR, State as StateSQLite};
 use strum_macros::{Display, EnumString};
 use uuid::Uuid;
 
-#[derive(Serialize, EnumString, Display, Eq, PartialEq)]
+#[derive(Serialize, EnumString, Display, Eq, PartialEq, Debug)]
 pub enum ReportState {
     InProgress,
     Completed,
     Failed,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Report {
     pub uuid: String,
     pub signature: String,
@@ -29,7 +29,7 @@ pub struct Report {
 #[derive(Debug, Display)]
 pub enum ReportErr {
     DbErr(sqERR),
-    Empty(String),
+    NotFound(String),
 }
 
 impl From<sqERR> for ReportErr {
@@ -40,7 +40,7 @@ impl From<sqERR> for ReportErr {
 
 impl From<String> for ReportErr {
     fn from(s: String) -> Self {
-        ReportErr::Empty(s)
+        ReportErr::NotFound(s)
     }
 }
 
@@ -107,13 +107,16 @@ impl Report {
         statement.bind((":signature", signature.as_str()))?;
 
         match statement.next() {
-            Ok(_) => Ok(Report {
-                uuid: statement.read::<String, _>(0).unwrap(),
-                signature: statement.read::<String, _>(1).unwrap().to_string(),
-                description: statement.read::<String, _>(2).unwrap(),
-                title: statement.read::<String, _>(3).unwrap(),
-                state: ReportState::from_str(&statement.read::<String, _>(4).unwrap()).unwrap(),
-            }),
+            Ok(state) => match state {
+                StateSQLite::Row => Ok(Report {
+                    uuid: statement.read::<String, _>(0).unwrap(),
+                    signature: statement.read::<String, _>(1).unwrap().to_string(),
+                    description: statement.read::<String, _>(2).unwrap(),
+                    title: statement.read::<String, _>(3).unwrap(),
+                    state: ReportState::from_str(&statement.read::<String, _>(4).unwrap()).unwrap(),
+                }),
+                StateSQLite::Done => Err(ReportErr::NotFound(String::from("Report Not found!"))),
+            },
             Err(err) => return Err(ReportErr::DbErr(err)),
         }
     }
