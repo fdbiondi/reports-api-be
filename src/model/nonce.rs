@@ -59,8 +59,6 @@ impl Nonce {
     }
 
     pub fn increment(&self) -> Result<Nonce, NonceErr> {
-        // pub fn increment(&self) -> Result<&Self, NonceErr> {
-
         let mut instance = match Nonce::find(self.signature.to_string()) {
             Ok(nonce) => nonce,
             Err(err) => return Err(NonceErr::Empty(err)),
@@ -88,6 +86,7 @@ impl Nonce {
         };
 
         let query = "SELECT * FROM nonces where signature = :signature";
+
         let mut statement = match connection.prepare(query) {
             Ok(stmt) => stmt,
             Err(_) => return Err("Prepare Statement failed".to_string()),

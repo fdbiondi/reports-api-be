@@ -32,22 +32,24 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
         data.description.to_string(),
     );
 
-    // find nonce from signature -> SELECT * FROM nonces where signature = ?
+    match report {
+        Ok(report) => report,
+        Err(_) => return HttpResponse::NotFound().json("Failed to create report"),
+    };
 
-    let mut nonce = Nonce::find(data.nonce.to_string());
-
-    if Some(nonce) {
-        // if exists -> update nonce -> UPDATE nonces SET nonce = ? WHERE signature = ?
-        nonce.update();
-    } else {
+    // find nonce from signature
+    let nonce = match Nonce::find(data.nonce.to_string()) {
+        // if exists -> update nonce
+        Ok(nonce) => match nonce.increment() {
+            Ok(nonce) => nonce,
+            Err(_) => return HttpResponse::NotFound().json("Failed to update nonce"),
+        },
         // if not exists -> insert nonce
-        nonce = Nonce::create(data.nonce.to_string());
-    }
-
-    /* match Nonce::find(data.nonce.to_string()) {
-        Some(nonce) => nonce.update(),
-        None => Nonce::create(data.nonce.to_string()),
-    } */
+        Err(_) => match Nonce::create(data.nonce.to_string()) {
+            Ok(nonce) => nonce,
+            Err(_) => return HttpResponse::NotFound().json("Failed to create nonce"),
+        },
+    };
 
     // return nonce
     HttpResponse::Created().json(nonce)
