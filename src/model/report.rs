@@ -17,7 +17,7 @@ pub enum ReportState {
     Failed,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize)]
 pub struct Report {
     pub uuid: String,
     pub signature: String,

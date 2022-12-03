@@ -39,7 +39,6 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
 
     // find nonce from signature
     let nonce = match Nonce::find(data.nonce.to_string()) {
-        // if exists -> update nonce
         Ok(nonce) => match nonce.increment() {
             Ok(nonce) => nonce,
             Err(_) => return HttpResponse::NotFound().json("Failed to update nonce"),

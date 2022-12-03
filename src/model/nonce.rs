@@ -40,8 +40,6 @@ fn open_connection() -> Result<Connection, NonceErr> {
     Ok(conn.unwrap())
 }
 
-// signature NVARCHAR(132) PRIMARY KEY NOT NULL
-// nonce INTEGER NOT NULL
 impl Nonce {
     pub fn create(signature: String) -> Result<Nonce, NonceErr> {
         let conn = open_connection()?;
@@ -59,26 +57,22 @@ impl Nonce {
     }
 
     pub fn increment(&self) -> Result<Nonce, NonceErr> {
-        let mut instance = match Nonce::find(self.signature.to_string()) {
-            Ok(nonce) => nonce,
-            Err(err) => return Err(NonceErr::Empty(err)),
-        };
-
-        instance.nonce += 1;
-
         let conn = open_connection()?;
         let query = "UPDATE nonces SET nonce = :nonce WHERE uuid = :uuid";
         let mut db = conn.prepare(query)?;
 
-        db.bind((":nonce", self.nonce.to_string().as_str()))?;
+        let incremented_value = self.nonce + 1;
+
+        db.bind((":nonce", incremented_value.to_string().as_str()))?;
         db.bind((":uuid", self.uuid.as_str()))?;
 
         db.next()?;
 
-        Ok(instance)
+        let nonce = Nonce::find(self.signature.to_string())?;
+
+        Ok(nonce)
     }
 
-    // get nonce -> search by signature
     pub fn find(nonce: String) -> Result<Nonce, String> {
         let connection = match open_connection() {
             Ok(db) => db,
@@ -99,7 +93,7 @@ impl Nonce {
                 StateSQLite::Row => Ok(Nonce {
                     uuid: statement.read::<String, _>(0).unwrap(),
                     signature: statement.read::<String, _>(1).unwrap(),
-                    nonce: statement.read::<i64, _>(1).unwrap() as i32,
+                    nonce: statement.read::<i64, _>(2).unwrap() as i32,
                 }),
                 StateSQLite::Done => Err("Not Found".to_string()),
             },
