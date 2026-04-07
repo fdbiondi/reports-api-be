@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[get("/reports/{signature}")]
 pub async fn get_report(signature: web::Path<String>) -> Result<HttpResponse, ReportErr> {
     match Report::find(signature.to_string()) {
-        Ok(res) => Ok(HttpResponse::Created().json(res)),
+        Ok(res) => Ok(HttpResponse::Ok().json(res)),
         Err(err) => Err(err), // TODO if fails -> return 404
     }
 }

@@ -254,14 +254,12 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
-- `GET /reports/{signature}` responde con `201 Created` en vez de `200 OK`.
 - El campo `nonce` del `POST /reports` en realidad funciona como una `signature`.
 - El `Dockerfile` termina con `CMD ["myapp"]`, pero el binario del crate se llama `test-rust-reports-api`. Ese `CMD` no coincide con el nombre real generado por Cargo.
 - No hay tests automatizados para los endpoints; `cargo test` hoy solo valida compilación.
 
 ## Recomendaciones
 
-- Corregir códigos de estado HTTP para lecturas (`200 OK`).
 - Renombrar el campo `nonce` del request si en realidad representa una `signature`.
 - Agregar tests de integración para los endpoints principales.
 - Corregir el `CMD` del `Dockerfile`.
