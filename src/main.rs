@@ -4,9 +4,11 @@ use api::nonces::get_nonce;
 use api::reports::{create_report, get_report};
 
 use actix_web::{middleware::Logger, App, HttpServer};
+use dotenv::dotenv;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv().ok();
     std::env::set_var("RUST_LOG", "debug");
     std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();

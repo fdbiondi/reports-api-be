@@ -139,7 +139,8 @@ El servidor está configurado para escuchar en `0.0.0.0:80`.
 Importante:
 
 - En Linux, abrir el puerto `80` suele requerir permisos elevados.
-- La ruta de SQLite ahora se resuelve desde la variable de entorno `DB_PATH`.
+- La app carga variables desde un archivo `.env` usando `dotenv`.
+- La ruta de SQLite se resuelve desde la variable de entorno `DB_PATH`.
 - Si `DB_PATH` no está definida, usa por defecto `data/data.db`.
 
 Ejemplos:
@@ -151,6 +152,14 @@ cargo run
 ```bash
 DB_PATH=data/data.db cargo run
 ```
+
+Archivo `.env` de ejemplo:
+
+```env
+DB_PATH=data/data.db
+```
+
+Podés tomar como referencia [`.env.example`](/home/fdbiondi/dev/projects/reports-api-be/.env.example).
 
 ## Cómo compilar
 
