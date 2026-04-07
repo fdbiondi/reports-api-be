@@ -208,6 +208,7 @@ La configuración actual:
 - expone `8080` del host hacia `8080` del contenedor
 - arranca con `cargo watch -c -w src -x run`
 - usa `.dockerignore` para no enviar `target/`, `.git/` y archivos locales innecesarios al contexto de build
+- construye en capas copiando primero `Cargo.toml` y `Cargo.lock` para reutilizar mejor la cache de dependencias
 
 Eso deja la API accesible en:
 
