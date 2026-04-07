@@ -1,4 +1,6 @@
 use core::result::Result;
+use std::env;
+
 use serde::Serialize;
 use sqlite::{Connection, Error as sqERR, State as StateSQLite};
 use uuid::Uuid;
@@ -29,7 +31,8 @@ impl From<String> for NonceErr {
 }
 
 fn open_connection() -> Result<Connection, NonceErr> {
-    let conn = sqlite::open("/usr/src/myapp/data/data.db");
+    let db_path = env::var("DB_PATH").unwrap_or_else(|_| "data/data.db".to_string());
+    let conn = sqlite::open(db_path);
 
     if conn.is_err() {
         let err = conn.err().unwrap();

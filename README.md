@@ -139,13 +139,18 @@ El servidor está configurado para escuchar en `0.0.0.0:80`.
 Importante:
 
 - En Linux, abrir el puerto `80` suele requerir permisos elevados.
-- El código abre SQLite usando la ruta fija `/usr/src/myapp/data/data.db`.
-- Eso coincide con el contenedor Docker, pero no con una ejecución local directa desde el repo.
+- La ruta de SQLite ahora se resuelve desde la variable de entorno `DB_PATH`.
+- Si `DB_PATH` no está definida, usa por defecto `data/data.db`.
 
-Si querés correrlo fuera de Docker, hoy hay dos opciones:
+Ejemplos:
 
-1. Ejecutarlo con permisos y replicar la ruta `/usr/src/myapp`.
-2. Ajustar el código para que lea la ruta de la base desde una variable de entorno o una ruta relativa.
+```bash
+cargo run
+```
+
+```bash
+DB_PATH=data/data.db cargo run
+```
 
 ## Cómo compilar
 
@@ -236,7 +241,7 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 
 - El proyecto usa `actix-web`, no `axum`.
 - `Cargo.toml` incluye dependencias que no se usan en el código actual, por ejemplo `mongodb` y `dotenv`.
-- La ruta de la base SQLite está hardcodeada para el contenedor Docker.
+- La API depende de que el directorio de trabajo permita resolver `data/data.db`, salvo que se configure `DB_PATH`.
 - `GET /reports/{signature}` responde con `201 Created` en vez de `200 OK`.
 - El campo `nonce` del `POST /reports` en realidad funciona como una `signature`.
 - El `Dockerfile` termina con `CMD ["myapp"]`, pero el binario del crate se llama `test-rust-reports-api`. Ese `CMD` no coincide con el nombre real generado por Cargo.

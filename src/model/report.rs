@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{env, str::FromStr};
 
 use actix_web::{
     http::{header::ContentType, StatusCode},
@@ -59,7 +59,8 @@ impl ResponseError for ReportErr {
 }
 
 fn open_connection() -> Result<Connection, ReportErr> {
-    let conn = sqlite::open("/usr/src/myapp/data/data.db");
+    let db_path = env::var("DB_PATH").unwrap_or_else(|_| "data/data.db".to_string());
+    let conn = sqlite::open(db_path);
 
     if conn.is_err() {
         let err = conn.err().unwrap();
