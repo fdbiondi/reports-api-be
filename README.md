@@ -207,6 +207,7 @@ La configuración actual:
 - monta el repo en `/usr/src/myapp`
 - expone `8080` del host hacia `8080` del contenedor
 - arranca con `cargo watch -c -w src -x run`
+- usa `.dockerignore` para no enviar `target/`, `.git/` y archivos locales innecesarios al contexto de build
 
 Eso deja la API accesible en:
 
@@ -255,11 +256,9 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
 - El campo `nonce` del `POST /reports` en realidad funciona como una `signature`.
-- El `Dockerfile` termina con `CMD ["myapp"]`, pero el binario del crate se llama `test-rust-reports-api`. Ese `CMD` no coincide con el nombre real generado por Cargo.
 - No hay tests automatizados para los endpoints; `cargo test` hoy solo valida compilación.
 
 ## Recomendaciones
 
 - Renombrar el campo `nonce` del request si en realidad representa una `signature`.
 - Agregar tests de integración para los endpoints principales.
-- Corregir el `CMD` del `Dockerfile`.
