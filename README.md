@@ -1,3 +1,251 @@
-## Test API using Rust with Actix framework!
+# Reports API
 
-[Actix Docs](https://actix.rs/docs/)
+API HTTP escrita en Rust con `actix-web` para registrar reportes y mantener un contador `nonce` asociado a una `signature`.
+
+## Resumen
+
+La API expone dos recursos principales:
+
+- `reports`: almacena un reporte identificado por `signature`.
+- `nonces`: guarda un contador incremental por `signature`.
+
+El flujo principal es:
+
+1. Un cliente crea un reporte con `POST /reports`.
+2. Si la `signature` no tiene nonce, la API crea uno con valor `1`.
+3. Si ya existe, incrementa el nonce.
+4. Luego se puede consultar el reporte o el nonce por `signature`.
+
+## Stack técnico
+
+- Rust 2021
+- `actix-web`
+- `serde`
+- SQLite local (`data/data.db`)
+- Docker / Docker Compose para desarrollo
+
+## Estructura del proyecto
+
+- `src/main.rs`: arranque del servidor HTTP.
+- `src/api/nonces.rs`: endpoint de consulta de nonce.
+- `src/api/reports.rs`: endpoints de consulta y creación de reportes.
+- `src/model/report.rs`: acceso a datos de `reports`.
+- `src/model/nonce.rs`: acceso a datos de `nonces`.
+- `data/data.db`: base SQLite incluida en el repo.
+- `data/README.md`: esquema SQL de referencia.
+
+## Endpoints
+
+### `GET /nonces/{signature}`
+
+Busca el nonce asociado a una `signature`.
+
+Respuesta exitosa:
+
+```json
+{
+  "uuid": "3c7f2d7c-2a57-4e53-a1f2-5d6e01234567",
+  "signature": "wallet-signature",
+  "nonce": 2
+}
+```
+
+### `GET /reports/{signature}`
+
+Busca un reporte por `signature`.
+
+Respuesta exitosa:
+
+```json
+{
+  "uuid": "8f3fd0de-8b54-4c3c-a53a-1234567890ab",
+  "signature": "wallet-signature",
+  "description": "Report description",
+  "title": "Report title",
+  "state": "InProgress"
+}
+```
+
+### `POST /reports`
+
+Crea un reporte y actualiza el nonce asociado a la misma `signature`.
+
+Body esperado:
+
+```json
+{
+  "nonce": "wallet-signature",
+  "signature": "wallet-signature",
+  "title": "Report title",
+  "description": "Report description"
+}
+```
+
+Nota: el campo `nonce` del request en realidad se usa como `signature` para buscar o crear el nonce. El nombre es confuso, pero ese es el comportamiento actual del código.
+
+Respuesta exitosa:
+
+```json
+{
+  "uuid": "3c7f2d7c-2a57-4e53-a1f2-5d6e01234567",
+  "signature": "wallet-signature",
+  "nonce": 1
+}
+```
+
+## Cómo ejecutar localmente
+
+### Requisitos
+
+- Rust toolchain instalado (`cargo`, `rustc`)
+- SQLite3 instalado
+
+### Base de datos
+
+El proyecto ya incluye una base SQLite en `data/data.db`.
+
+Para inspeccionar el esquema:
+
+```bash
+sqlite3 data/data.db ".schema"
+```
+
+Si necesitás recrear las tablas:
+
+```sql
+CREATE TABLE reports (
+  uuid NVARCHAR(36) UNIQUE NOT NULL,
+  signature NVARCHAR(132) PRIMARY KEY NOT NULL,
+  description TEXT NOT NULL,
+  title NVARCHAR(50) NOT NULL,
+  state NVARCHAR(12) NOT NULL
+);
+
+CREATE TABLE nonces (
+  uuid NVARCHAR(36) UNIQUE NOT NULL,
+  signature NVARCHAR(132) PRIMARY KEY NOT NULL,
+  nonce INTEGER NOT NULL
+);
+```
+
+### Ejecutar con Cargo
+
+```bash
+cargo run
+```
+
+El servidor está configurado para escuchar en `0.0.0.0:80`.
+
+Importante:
+
+- En Linux, abrir el puerto `80` suele requerir permisos elevados.
+- El código abre SQLite usando la ruta fija `/usr/src/myapp/data/data.db`.
+- Eso coincide con el contenedor Docker, pero no con una ejecución local directa desde el repo.
+
+Si querés correrlo fuera de Docker, hoy hay dos opciones:
+
+1. Ejecutarlo con permisos y replicar la ruta `/usr/src/myapp`.
+2. Ajustar el código para que lea la ruta de la base desde una variable de entorno o una ruta relativa.
+
+## Cómo compilar
+
+```bash
+cargo build
+```
+
+Para compilación optimizada:
+
+```bash
+cargo build --release
+```
+
+## Cómo testear
+
+```bash
+cargo test
+```
+
+Estado actual del proyecto:
+
+- No hay tests automatizados definidos en `src/` ni en `tests/`.
+- `cargo test` igualmente sirve para validar que el proyecto compile y enlace correctamente.
+
+## Cómo ejecutar con Docker
+
+### Docker Compose
+
+```bash
+docker compose up --build
+```
+
+o, si tu instalación usa el comando viejo:
+
+```bash
+docker-compose up --build
+```
+
+La configuración actual:
+
+- monta el repo en `/usr/src/myapp`
+- expone `8080` del host hacia `80` del contenedor
+- arranca con `cargo watch -c -w src -x run`
+
+Eso deja la API accesible en:
+
+```text
+http://localhost:8080
+```
+
+### Docker directo
+
+```bash
+docker build -t reports-api .
+docker run --rm -p 8080:80 reports-api
+```
+
+## Ejemplos de uso
+
+### Crear reporte
+
+```bash
+curl -X POST http://localhost:8080/reports \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nonce": "wallet-signature",
+    "signature": "wallet-signature",
+    "title": "Broken report",
+    "description": "The generated file is empty"
+  }'
+```
+
+### Consultar reporte
+
+```bash
+curl http://localhost:8080/reports/wallet-signature
+```
+
+### Consultar nonce
+
+```bash
+curl http://localhost:8080/nonces/wallet-signature
+```
+
+## Observaciones sobre el estado actual
+
+Durante la revisión aparecieron varios puntos a tener en cuenta:
+
+- El proyecto usa `actix-web`, no `axum`.
+- `Cargo.toml` incluye dependencias que no se usan en el código actual, por ejemplo `mongodb` y `dotenv`.
+- La ruta de la base SQLite está hardcodeada para el contenedor Docker.
+- `GET /reports/{signature}` responde con `201 Created` en vez de `200 OK`.
+- El campo `nonce` del `POST /reports` en realidad funciona como una `signature`.
+- El `Dockerfile` termina con `CMD ["myapp"]`, pero el binario del crate se llama `test-rust-reports-api`. Ese `CMD` no coincide con el nombre real generado por Cargo.
+
+## Recomendaciones
+
+- Parametrizar host, puerto y ruta de base de datos mediante variables de entorno.
+- Corregir códigos de estado HTTP para lecturas (`200 OK`).
+- Renombrar el campo `nonce` del request si en realidad representa una `signature`.
+- Eliminar dependencias no usadas.
+- Agregar tests de integración para los endpoints principales.
+- Corregir el `CMD` del `Dockerfile`.
