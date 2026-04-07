@@ -184,8 +184,8 @@ cargo test
 
 Estado actual del proyecto:
 
-- No hay tests automatizados definidos en `src/` ni en `tests/`.
-- `cargo test` igualmente sirve para validar que el proyecto compile y enlace correctamente.
+- Hay tests automatizados básicos de endpoints usando `actix_web::test`.
+- `cargo test` valida compilación y cubre `GET /reports/{signature}`, `GET /nonces/{signature}` y `POST /reports`.
 
 ## Cómo ejecutar con Docker
 
@@ -280,8 +280,7 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
-- No hay tests automatizados para los endpoints; `cargo test` hoy solo valida compilación.
 
 ## Recomendaciones
 
-- Agregar tests de integración para los endpoints principales.
+- Ampliar la cobertura de tests para casos de error, validaciones y regresiones de base de datos.
