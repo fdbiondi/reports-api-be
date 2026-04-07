@@ -2,8 +2,9 @@ version: "3.9"
 
 services:
   rust_dev:
-    build: 
+    build:
       context: .
+      target: dev
     volumes:
       - .:/usr/src/myapp
     environment:
@@ -13,9 +14,6 @@ services:
       - 8080:8080
     networks:
       - rust-net
-    command: >
-       bash -c "cargo watch -c -w src -x run"
-    # bash -c "cargo build && cargo run"
 
 networks:
   rust-net:

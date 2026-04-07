@@ -190,7 +190,12 @@ Estado actual del proyecto:
 
 ## Cómo ejecutar con Docker
 
-### Docker Compose
+El `Dockerfile` define dos flujos:
+
+- `dev`: instala `cargo-watch` y está pensado para desarrollo local
+- `runtime`: imagen final más chica, pensada para ejecución o despliegue
+
+### Docker para desarrollo
 
 ```bash
 docker compose up --build
@@ -202,10 +207,13 @@ o, si tu instalación usa el comando viejo:
 docker-compose up --build
 ```
 
-La configuración actual:
+Este flujo usa el target `dev` del `Dockerfile`.
+
+La configuración actual de desarrollo:
 
 - monta el repo en `/usr/src/myapp`
 - expone `8080` del host hacia `8080` del contenedor
+- usa el target `dev` del `Dockerfile`
 - arranca con `cargo watch -c -w src -x run`
 - usa `.dockerignore` para no enviar `target/`, `.git/` y archivos locales innecesarios al contexto de build
 - construye en capas copiando primero `Cargo.toml` y `Cargo.lock` para reutilizar mejor la cache de dependencias
@@ -216,12 +224,30 @@ Eso deja la API accesible en:
 http://localhost:8080
 ```
 
-### Docker directo
+Cuándo usarlo:
+
+- cuando querés desarrollo con recarga automática
+- cuando vas a editar código localmente mientras el contenedor corre
+
+### Docker para runtime
 
 ```bash
 docker build -t reports-api .
 docker run --rm -p 8080:8080 reports-api
 ```
+
+Este flujo usa el target final `runtime` del `Dockerfile`.
+
+La imagen resultante:
+
+- no instala `cargo-watch`
+- copia solo el binario compilado y la carpeta `data/`
+- está pensada para correr la API, no para editar el código dentro del contenedor
+
+Cuándo usarlo:
+
+- cuando querés probar la imagen final
+- cuando buscás un contenedor más chico y más cercano a despliegue
 
 ## Ejemplos de uso
 
