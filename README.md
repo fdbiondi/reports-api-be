@@ -74,14 +74,13 @@ Body esperado:
 
 ```json
 {
-  "nonce": "wallet-signature",
   "signature": "wallet-signature",
   "title": "Report title",
   "description": "Report description"
 }
 ```
 
-Nota: el campo `nonce` del request en realidad se usa como `signature` para buscar o crear el nonce. El nombre es confuso, pero ese es el comportamiento actual del código.
+La `signature` se usa tanto para crear el reporte como para buscar o crear el nonce asociado.
 
 Respuesta exitosa:
 
@@ -257,7 +256,6 @@ Cuándo usarlo:
 curl -X POST http://localhost:8080/reports \
   -H "Content-Type: application/json" \
   -d '{
-    "nonce": "wallet-signature",
     "signature": "wallet-signature",
     "title": "Broken report",
     "description": "The generated file is empty"
@@ -282,10 +280,8 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
-- El campo `nonce` del `POST /reports` en realidad funciona como una `signature`.
 - No hay tests automatizados para los endpoints; `cargo test` hoy solo valida compilación.
 
 ## Recomendaciones
 
-- Renombrar el campo `nonce` del request si en realidad representa una `signature`.
 - Agregar tests de integración para los endpoints principales.

@@ -17,7 +17,6 @@ pub async fn get_report(signature: web::Path<String>) -> Result<HttpResponse, Re
 
 #[derive(Serialize, Deserialize)]
 pub struct PostReportRequest {
-    nonce: String,
     signature: String,
     title: String,
     description: String,
@@ -38,13 +37,13 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
     };
 
     // find nonce from signature
-    let nonce = match Nonce::find(data.nonce.to_string()) {
+    let nonce = match Nonce::find(data.signature.to_string()) {
         Ok(nonce) => match nonce.increment() {
             Ok(nonce) => nonce,
             Err(_) => return HttpResponse::NotFound().json("Failed to update nonce"),
         },
         // if not exists -> insert nonce
-        Err(_) => match Nonce::create(data.nonce.to_string()) {
+        Err(_) => match Nonce::create(data.signature.to_string()) {
             Ok(nonce) => nonce,
             Err(_) => return HttpResponse::NotFound().json("Failed to create nonce"),
         },
