@@ -9,6 +9,6 @@ RUN apt-get update && apt-get upgrade -y && \
 RUN cargo install --path .
 RUN cargo install cargo-watch
 
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["myapp"]

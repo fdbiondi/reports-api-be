@@ -134,14 +134,16 @@ CREATE TABLE nonces (
 cargo run
 ```
 
-El servidor está configurado para escuchar en `0.0.0.0:80`.
+El servidor usa estas variables de entorno:
+
+- `HOST`: por defecto `0.0.0.0`
+- `PORT`: por defecto `8080`
+- `DB_PATH`: por defecto `data/data.db`
 
 Importante:
 
-- En Linux, abrir el puerto `80` suele requerir permisos elevados.
 - La app carga variables desde un archivo `.env` usando `dotenv`.
-- La ruta de SQLite se resuelve desde la variable de entorno `DB_PATH`.
-- Si `DB_PATH` no está definida, usa por defecto `data/data.db`.
+- El valor por defecto `8080` evita requerir privilegios elevados en la mayoría de entornos locales.
 
 Ejemplos:
 
@@ -150,12 +152,14 @@ cargo run
 ```
 
 ```bash
-DB_PATH=data/data.db cargo run
+HOST=127.0.0.1 PORT=8080 DB_PATH=data/data.db cargo run
 ```
 
 Archivo `.env` de ejemplo:
 
 ```env
+HOST=0.0.0.0
+PORT=8080
 DB_PATH=data/data.db
 ```
 
@@ -201,7 +205,7 @@ docker-compose up --build
 La configuración actual:
 
 - monta el repo en `/usr/src/myapp`
-- expone `8080` del host hacia `80` del contenedor
+- expone `8080` del host hacia `8080` del contenedor
 - arranca con `cargo watch -c -w src -x run`
 
 Eso deja la API accesible en:
@@ -214,7 +218,7 @@ http://localhost:8080
 
 ```bash
 docker build -t reports-api .
-docker run --rm -p 8080:80 reports-api
+docker run --rm -p 8080:8080 reports-api
 ```
 
 ## Ejemplos de uso
@@ -248,18 +252,16 @@ curl http://localhost:8080/nonces/wallet-signature
 
 Durante la revisión aparecieron varios puntos a tener en cuenta:
 
-- El proyecto usa `actix-web`, no `axum`.
-- `Cargo.toml` incluye dependencias que no se usan en el código actual, por ejemplo `mongodb` y `dotenv`.
-- La API depende de que el directorio de trabajo permita resolver `data/data.db`, salvo que se configure `DB_PATH`.
+- La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
+- `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
 - `GET /reports/{signature}` responde con `201 Created` en vez de `200 OK`.
 - El campo `nonce` del `POST /reports` en realidad funciona como una `signature`.
 - El `Dockerfile` termina con `CMD ["myapp"]`, pero el binario del crate se llama `test-rust-reports-api`. Ese `CMD` no coincide con el nombre real generado por Cargo.
+- No hay tests automatizados para los endpoints; `cargo test` hoy solo valida compilación.
 
 ## Recomendaciones
 
-- Parametrizar host, puerto y ruta de base de datos mediante variables de entorno.
 - Corregir códigos de estado HTTP para lecturas (`200 OK`).
 - Renombrar el campo `nonce` del request si en realidad representa una `signature`.
-- Eliminar dependencias no usadas.
 - Agregar tests de integración para los endpoints principales.
 - Corregir el `CMD` del `Dockerfile`.
