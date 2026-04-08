@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub async fn get_report(signature: web::Path<String>) -> Result<HttpResponse, ReportErr> {
     match Report::find(signature.to_string()) {
         Ok(res) => Ok(HttpResponse::Ok().json(res)),
-        Err(err) => Err(err), // TODO if fails -> return 404
+        Err(err) => Err(err),
     }
 }
 
@@ -33,19 +33,26 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
 
     match report {
         Ok(report) => report,
-        Err(_) => return HttpResponse::NotFound().json("Failed to create report"),
+        Err(ReportErr::NotFound(message)) => return HttpResponse::NotFound().json(message),
+        Err(ReportErr::DbErr(err)) => {
+            let err_message = err.to_string();
+            if err_message.contains("UNIQUE constraint failed") {
+                return HttpResponse::Conflict().json("Report already exists for this signature");
+            }
+            return HttpResponse::InternalServerError().json("Failed to create report");
+        }
     };
 
     // find nonce from signature
     let nonce = match Nonce::find(data.signature.to_string()) {
         Ok(nonce) => match nonce.increment() {
             Ok(nonce) => nonce,
-            Err(_) => return HttpResponse::NotFound().json("Failed to update nonce"),
+            Err(_) => return HttpResponse::InternalServerError().json("Failed to update nonce"),
         },
         // if not exists -> insert nonce
         Err(_) => match Nonce::create(data.signature.to_string()) {
             Ok(nonce) => nonce,
-            Err(_) => return HttpResponse::NotFound().json("Failed to create nonce"),
+            Err(_) => return HttpResponse::InternalServerError().json("Failed to create nonce"),
         },
     };
 

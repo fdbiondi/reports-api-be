@@ -281,12 +281,8 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
 - `cargo test` pasa y hoy cubre los endpoints principales, pero todavía quedan warnings de compilación en los modelos.
-- `POST /reports` sigue respondiendo `404 Not Found` para fallos de creación o actualización, aunque no todos esos errores representan realmente un “not found”.
-- `Nonce::find` todavía ignora el resultado de `statement.bind(...)`, lo que puede ocultar errores de bind y generar diagnósticos imprecisos.
 
 ## Recomendaciones
 
-- Corregir los códigos HTTP de error en `POST /reports` para distinguir mejor entre validaciones, conflictos y errores internos.
-- Manejar explícitamente el resultado de `statement.bind(...)` en `Nonce::find`.
 - Ampliar la cobertura de tests para casos de error, validaciones y regresiones de base de datos.
 - Limpiar los warnings de compilación restantes en `cargo test`.

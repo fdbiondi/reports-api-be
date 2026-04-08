@@ -89,7 +89,9 @@ impl Nonce {
             Err(_) => return Err("Prepare Statement failed".to_string()),
         };
 
-        statement.bind((":signature", nonce.as_str()));
+        if statement.bind((":signature", nonce.as_str())).is_err() {
+            return Err("Bind Statement failed".to_string());
+        }
 
         match statement.next() {
             Ok(state) => match state {

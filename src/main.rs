@@ -176,4 +176,43 @@ mod tests {
         assert_eq!(report_count, 1);
         assert_eq!(nonce_count, 1);
     }
+
+    #[actix_web::test]
+    async fn create_report_returns_conflict_when_signature_already_exists() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-conflict");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+
+        let first_req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-dup",
+                    "title": "First",
+                    "description": "first insert"
+                }"#,
+            )
+            .to_request();
+        let first_resp = test::call_service(&app, first_req).await;
+        assert_eq!(first_resp.status(), StatusCode::CREATED);
+
+        let second_req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-dup",
+                    "title": "Second",
+                    "description": "duplicate insert"
+                }"#,
+            )
+            .to_request();
+        let second_resp = test::call_service(&app, second_req).await;
+
+        assert_eq!(second_resp.status(), StatusCode::CONFLICT);
+    }
 }
