@@ -32,6 +32,7 @@ async fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
     use actix_web::{http::StatusCode, test};
+    use serde::Deserialize;
     use sqlite::Connection;
     use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -97,6 +98,11 @@ mod tests {
         create_schema(&conn);
     }
 
+    #[derive(Deserialize)]
+    struct ErrorBody {
+        error: String,
+    }
+
     #[actix_web::test]
     async fn get_report_returns_ok_for_existing_report() {
         let _guard = env_lock().lock().unwrap();
@@ -157,8 +163,11 @@ mod tests {
             .uri("/nonces/does-not-exist")
             .to_request();
         let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
 
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.error, "Nonce not found!");
     }
 
     #[actix_web::test]
@@ -289,8 +298,11 @@ mod tests {
             )
             .to_request();
         let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
 
-        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.error, "Failed to create report");
     }
 
     #[actix_web::test]
@@ -303,7 +315,10 @@ mod tests {
             .uri("/reports/any-signature")
             .to_request();
         let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
 
-        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(body.error.starts_with("Database error:"));
     }
 }

@@ -1,9 +1,6 @@
 use std::{env, fmt, str::FromStr};
 
-use actix_web::{
-    http::{header::ContentType, StatusCode},
-    HttpResponse, ResponseError,
-};
+use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 
 use serde::Serialize;
 use sqlite::{Connection, Error as sqERR, State as StateSQLite};
@@ -55,9 +52,14 @@ impl From<String> for ReportErr {
 
 impl ResponseError for ReportErr {
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code())
-            .insert_header(ContentType::json())
-            .body(self.to_string())
+        #[derive(Serialize)]
+        struct ErrorResponse {
+            error: String,
+        }
+
+        HttpResponse::build(self.status_code()).json(ErrorResponse {
+            error: self.to_string(),
+        })
     }
 
     fn status_code(&self) -> StatusCode {

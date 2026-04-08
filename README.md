@@ -92,6 +92,16 @@ Respuesta exitosa:
 }
 ```
 
+### Formato de errores
+
+Las respuestas de error siguen un formato JSON unificado:
+
+```json
+{
+  "error": "Descripción del error"
+}
+```
+
 ## Cómo ejecutar localmente
 
 ### Requisitos

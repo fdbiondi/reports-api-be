@@ -1,7 +1,8 @@
+use crate::api::error_response;
 use crate::model::nonce::Nonce;
 use crate::model::report::{Report, ReportErr};
 
-use actix_web::{get, post, web, HttpResponse};
+use actix_web::{get, http::StatusCode, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 #[get("/reports/{signature}")]
@@ -30,13 +31,16 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
 
     match report {
         Ok(report) => report,
-        Err(ReportErr::NotFound(message)) => return HttpResponse::NotFound().json(message),
+        Err(ReportErr::NotFound(message)) => return error_response(StatusCode::NOT_FOUND, message),
         Err(ReportErr::DbErr(err)) => {
             let err_message = err.to_string();
             if err_message.contains("UNIQUE constraint failed") {
-                return HttpResponse::Conflict().json("Report already exists for this signature");
+                return error_response(
+                    StatusCode::CONFLICT,
+                    "Report already exists for this signature",
+                );
             }
-            return HttpResponse::InternalServerError().json("Failed to create report");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create report");
         }
     };
 
@@ -44,12 +48,16 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
     let nonce = match Nonce::find(data.signature.to_string()) {
         Ok(nonce) => match nonce.increment() {
             Ok(nonce) => nonce,
-            Err(_) => return HttpResponse::InternalServerError().json("Failed to update nonce"),
+            Err(_) => {
+                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update nonce");
+            }
         },
         // if not exists -> insert nonce
         Err(_) => match Nonce::create(data.signature.to_string()) {
             Ok(nonce) => nonce,
-            Err(_) => return HttpResponse::InternalServerError().json("Failed to create nonce"),
+            Err(_) => {
+                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create nonce");
+            }
         },
     };
 
