@@ -1,8 +1,5 @@
-#[path = "../model/mod.rs"]
-mod model;
-
-use model::nonce::Nonce;
-use model::report::{Report, ReportErr};
+use crate::model::nonce::Nonce;
+use crate::model::report::{Report, ReportErr};
 
 use actix_web::{get, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};

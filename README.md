@@ -185,7 +185,10 @@ cargo test
 Estado actual del proyecto:
 
 - Hay tests automatizados básicos de endpoints usando `actix_web::test`.
-- `cargo test` valida compilación y cubre `GET /reports/{signature}`, `GET /nonces/{signature}` y `POST /reports`.
+- `cargo test` valida compilación y hoy cubre:
+  - `GET /reports/{signature}` exitoso y no encontrado
+  - `GET /nonces/{signature}` exitoso y no encontrado
+  - `POST /reports` exitoso, payload inválido, `signature` duplicada y fallo de DB
 
 ## Cómo ejecutar con Docker
 
@@ -280,9 +283,9 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
-- `cargo test` pasa y hoy cubre los endpoints principales, pero todavía quedan warnings de compilación en los modelos.
+- `POST /reports` devuelve `409 Conflict` cuando ya existe un reporte para esa `signature`, y `500 Internal Server Error` ante fallos internos de DB.
 
 ## Recomendaciones
 
-- Ampliar la cobertura de tests para casos de error, validaciones y regresiones de base de datos.
-- Limpiar los warnings de compilación restantes en `cargo test`.
+- Ampliar cobertura con casos de concurrencia y validaciones de formato/largo de campos.
+- Estandarizar las respuestas de error en un esquema JSON común para toda la API.

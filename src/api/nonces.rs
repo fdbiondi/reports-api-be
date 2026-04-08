@@ -1,7 +1,4 @@
-#[path = "../model/mod.rs"]
-mod model;
-
-use model::nonce::Nonce;
+use crate::model::nonce::Nonce;
 
 use actix_web::{get, web, HttpResponse};
 

@@ -1,4 +1,4 @@
-use std::{env, str::FromStr};
+use std::{env, fmt, str::FromStr};
 
 use actix_web::{
     http::{header::ContentType, StatusCode},
@@ -26,10 +26,19 @@ pub struct Report {
     pub state: ReportState,
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 pub enum ReportErr {
     DbErr(sqERR),
     NotFound(String),
+}
+
+impl fmt::Display for ReportErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReportErr::DbErr(err) => write!(f, "Database error: {err}"),
+            ReportErr::NotFound(message) => write!(f, "{message}"),
+        }
+    }
 }
 
 impl From<sqERR> for ReportErr {

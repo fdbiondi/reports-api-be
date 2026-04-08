@@ -1,4 +1,5 @@
 mod api;
+mod model;
 
 use actix_web::{middleware::Logger, App, HttpServer};
 use dotenv::dotenv;
@@ -113,6 +114,22 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn get_report_returns_not_found_for_missing_report() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("get-report-missing");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::get()
+            .uri("/reports/does-not-exist")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[actix_web::test]
     async fn get_nonce_returns_ok_for_existing_nonce() {
         let _guard = env_lock().lock().unwrap();
         let db_path = temp_db_path("get-nonce");
@@ -126,6 +143,22 @@ mod tests {
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn get_nonce_returns_not_found_for_missing_nonce() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("get-nonce-missing");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::get()
+            .uri("/nonces/does-not-exist")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     #[actix_web::test]
@@ -214,5 +247,49 @@ mod tests {
         let second_resp = test::call_service(&app, second_req).await;
 
         assert_eq!(second_resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[actix_web::test]
+    async fn create_report_returns_bad_request_for_invalid_payload() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-invalid-payload");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-invalid"
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[actix_web::test]
+    async fn create_report_returns_internal_server_error_for_invalid_db_path() {
+        let _guard = env_lock().lock().unwrap();
+        env::set_var("DB_PATH", "/tmp/reports-api-missing-dir/data.db");
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-db-error",
+                    "title": "Will fail",
+                    "description": "db path is invalid"
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

@@ -1,5 +1,6 @@
 use core::result::Result;
 use std::env;
+use std::fmt;
 
 use serde::Serialize;
 use sqlite::{Connection, Error as sqERR, State as StateSQLite};
@@ -16,6 +17,15 @@ pub struct Nonce {
 pub enum NonceErr {
     DbErr(sqERR),
     Empty(String),
+}
+
+impl fmt::Display for NonceErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NonceErr::DbErr(err) => write!(f, "Database error: {err}"),
+            NonceErr::Empty(message) => write!(f, "{message}"),
+        }
+    }
 }
 
 impl From<sqERR> for NonceErr {
