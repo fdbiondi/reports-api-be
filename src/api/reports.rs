@@ -31,16 +31,23 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
 
     match report {
         Ok(report) => report,
-        Err(ReportErr::NotFound(message)) => return error_response(StatusCode::NOT_FOUND, message),
+        Err(ReportErr::NotFound(message)) => {
+            return error_response(StatusCode::NOT_FOUND, "NOT_FOUND", message);
+        }
         Err(ReportErr::DbErr(err)) => {
             let err_message = err.to_string();
             if err_message.contains("UNIQUE constraint failed") {
                 return error_response(
                     StatusCode::CONFLICT,
+                    "CONFLICT",
                     "Report already exists for this signature",
                 );
             }
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create report");
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to create report",
+            );
         }
     };
 
@@ -49,14 +56,22 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
         Ok(nonce) => match nonce.increment() {
             Ok(nonce) => nonce,
             Err(_) => {
-                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to update nonce");
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    "Failed to update nonce",
+                );
             }
         },
         // if not exists -> insert nonce
         Err(_) => match Nonce::create(data.signature.to_string()) {
             Ok(nonce) => nonce,
             Err(_) => {
-                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create nonce");
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    "Failed to create nonce",
+                );
             }
         },
     };

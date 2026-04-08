@@ -54,10 +54,15 @@ impl ResponseError for ReportErr {
     fn error_response(&self) -> HttpResponse {
         #[derive(Serialize)]
         struct ErrorResponse {
+            code: String,
             error: String,
         }
 
         HttpResponse::build(self.status_code()).json(ErrorResponse {
+            code: match self {
+                ReportErr::NotFound(_) => "NOT_FOUND".to_string(),
+                ReportErr::DbErr(_) => "INTERNAL_ERROR".to_string(),
+            },
             error: self.to_string(),
         })
     }

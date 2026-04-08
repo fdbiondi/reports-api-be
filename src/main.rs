@@ -100,6 +100,7 @@ mod tests {
 
     #[derive(Deserialize)]
     struct ErrorBody {
+        code: String,
         error: String,
     }
 
@@ -167,6 +168,7 @@ mod tests {
         let body: ErrorBody = test::read_body_json(resp).await;
 
         assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "NOT_FOUND");
         assert_eq!(body.error, "Nonce not found!");
     }
 
@@ -254,8 +256,12 @@ mod tests {
             )
             .to_request();
         let second_resp = test::call_service(&app, second_req).await;
+        let status = second_resp.status();
+        let body: ErrorBody = test::read_body_json(second_resp).await;
 
-        assert_eq!(second_resp.status(), StatusCode::CONFLICT);
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.code, "CONFLICT");
+        assert_eq!(body.error, "Report already exists for this signature");
     }
 
     #[actix_web::test]
@@ -280,6 +286,7 @@ mod tests {
         let body: ErrorBody = test::read_body_json(resp).await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.code, "INVALID_JSON");
         assert!(body.error.starts_with("Invalid JSON payload:"));
     }
 
@@ -305,6 +312,7 @@ mod tests {
         let body: ErrorBody = test::read_body_json(resp).await;
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "INTERNAL_ERROR");
         assert_eq!(body.error, "Failed to create report");
     }
 
@@ -322,6 +330,7 @@ mod tests {
         let body: ErrorBody = test::read_body_json(resp).await;
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "INTERNAL_ERROR");
         assert!(body.error.starts_with("Database error:"));
     }
 }

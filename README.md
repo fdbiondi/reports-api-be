@@ -98,6 +98,7 @@ Las respuestas de error siguen un formato JSON unificado:
 
 ```json
 {
+  "code": "NOT_FOUND",
   "error": "Descripción del error"
 }
 ```
