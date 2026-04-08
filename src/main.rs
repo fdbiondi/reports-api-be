@@ -276,8 +276,11 @@ mod tests {
             )
             .to_request();
         let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
 
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.error.starts_with("Invalid JSON payload:"));
     }
 
     #[actix_web::test]

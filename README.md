@@ -102,6 +102,8 @@ Las respuestas de error siguen un formato JSON unificado:
 }
 ```
 
+Incluye también errores de `400 Bad Request` por payload JSON inválido.
+
 ## Cómo ejecutar localmente
 
 ### Requisitos
