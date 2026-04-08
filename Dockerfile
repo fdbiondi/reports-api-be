@@ -20,7 +20,7 @@ RUN cargo build --release
 
 FROM base AS dev
 
-RUN cargo install cargo-watch
+RUN cargo install cargo-watch --locked
 
 COPY src ./src
 COPY data ./data
