@@ -292,4 +292,18 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[actix_web::test]
+    async fn get_report_returns_internal_server_error_for_invalid_db_path() {
+        let _guard = env_lock().lock().unwrap();
+        env::set_var("DB_PATH", "/tmp/reports-api-missing-dir/data.db");
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::get()
+            .uri("/reports/any-signature")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

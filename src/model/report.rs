@@ -62,7 +62,8 @@ impl ResponseError for ReportErr {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            _ => StatusCode::NOT_FOUND,
+            ReportErr::NotFound(_) => StatusCode::NOT_FOUND,
+            ReportErr::DbErr(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
