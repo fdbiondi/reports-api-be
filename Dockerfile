@@ -34,12 +34,15 @@ FROM debian:bookworm-slim AS runtime
 WORKDIR /usr/src/myapp
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends sqlite3 libsqlite3-0 ca-certificates && \
+    apt-get install -y --no-install-recommends sqlite3 libsqlite3-0 ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/src/myapp/target/release/test-rust-reports-api /usr/local/bin/test-rust-reports-api
 COPY --from=builder /usr/src/myapp/data ./data
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
 
 CMD ["test-rust-reports-api"]

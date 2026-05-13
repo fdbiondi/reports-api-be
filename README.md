@@ -36,6 +36,18 @@ El flujo principal es:
 
 ## Endpoints
 
+### `GET /health`
+
+Endpoint de salud para verificar que la API está levantada.
+
+Respuesta exitosa:
+
+```json
+{
+  "status": "ok"
+}
+```
+
 ### `GET /nonces/{signature}`
 
 Busca el nonce asociado a una `signature`.
@@ -82,6 +94,17 @@ Body esperado:
 
 La `signature` se usa tanto para crear el reporte como para buscar o crear el nonce asociado.
 
+Validaciones de negocio en `POST /reports`:
+
+- `signature`: obligatorio, `1..=132` caracteres (luego de `trim`)
+- `title`: obligatorio, `3..=50` caracteres (luego de normalizar espacios)
+- `description`: obligatorio, `10..=5000` caracteres (luego de normalizar espacios)
+
+Normalización aplicada:
+
+- `signature`: `trim` de espacios al inicio/final
+- `title` y `description`: `trim` + colapso de espacios internos múltiples a uno solo
+
 Respuesta exitosa:
 
 ```json
@@ -104,6 +127,27 @@ Las respuestas de error siguen un formato JSON unificado:
 ```
 
 Incluye también errores de `400 Bad Request` por payload JSON inválido.
+
+Códigos actuales de error:
+
+- `INVALID_JSON`
+- `VALIDATION_ERROR`
+- `NOT_FOUND`
+- `CONFLICT`
+- `INTERNAL_ERROR`
+
+### Errores por endpoint
+
+| Endpoint | Errores esperables |
+| --- | --- |
+| `GET /health` | - |
+| `GET /nonces/{signature}` | `NOT_FOUND`, `INVALID_JSON`* |
+| `GET /reports/{signature}` | `NOT_FOUND`, `INTERNAL_ERROR`, `INVALID_JSON`* |
+| `POST /reports` | `INVALID_JSON`, `VALIDATION_ERROR`, `CONFLICT`, `INTERNAL_ERROR`, `NOT_FOUND`** |
+
+\* `INVALID_JSON` aplica cuando el request incluye body JSON inválido en endpoints configurados con extractor JSON.
+
+\** `NOT_FOUND` queda reservado para errores explícitos de tipo `ReportErr::NotFound`.
 
 ## Cómo ejecutar localmente
 
@@ -258,6 +302,7 @@ La imagen resultante:
 - no instala `cargo-watch`
 - copia solo el binario compilado y la carpeta `data/`
 - está pensada para correr la API, no para editar el código dentro del contenedor
+- incluye `HEALTHCHECK` con `GET /health`
 
 Cuándo usarlo:
 
@@ -301,4 +346,4 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 ## Recomendaciones
 
 - Ampliar cobertura con casos de concurrencia y validaciones de formato/largo de campos.
-- Estandarizar las respuestas de error en un esquema JSON común para toda la API.
+- Agregar tests de concurrencia/idempotencia y de base de datos bloqueada/corrupta.

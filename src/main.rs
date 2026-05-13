@@ -121,6 +121,15 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn get_health_returns_ok() {
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::get().uri("/health").to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[actix_web::test]
     async fn get_report_returns_not_found_for_missing_report() {
         let _guard = env_lock().lock().unwrap();
         let db_path = temp_db_path("get-report-missing");
@@ -288,6 +297,74 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body.code, "INVALID_JSON");
         assert!(body.error.starts_with("Invalid JSON payload:"));
+    }
+
+    #[actix_web::test]
+    async fn create_report_returns_validation_error_for_invalid_business_rules() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-validation-error");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "   ",
+                    "title": "Ok title",
+                    "description": "This description has enough length"
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.code, "VALIDATION_ERROR");
+        assert_eq!(body.error, "Field 'signature' cannot be empty");
+    }
+
+    #[actix_web::test]
+    async fn create_report_normalizes_title_and_description() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-normalization");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "  sig-normalized  ",
+                    "title": "  A    normalized   title  ",
+                    "description": "  This    description     should be normalized   "
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let conn = sqlite::open(&db_path).unwrap();
+        let mut title = String::new();
+        let mut description = String::new();
+        conn.iterate(
+            "SELECT title, description FROM reports WHERE signature = 'sig-normalized';",
+            |pairs| {
+                title = pairs[0].1.unwrap_or_default().to_string();
+                description = pairs[1].1.unwrap_or_default().to_string();
+                true
+            },
+        )
+        .unwrap();
+
+        assert_eq!(title, "A normalized title");
+        assert_eq!(description, "This description should be normalized");
     }
 
     #[actix_web::test]
