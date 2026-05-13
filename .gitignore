@@ -1,3 +1,7 @@
 /target
+Cargo.lock
+**/*.rs.bk
 .vscode
 .env
+data/data.db
+.codex
