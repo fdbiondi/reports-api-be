@@ -18,14 +18,10 @@ async fn main() -> std::io::Result<()> {
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(8080);
 
-    HttpServer::new(|| {
-        App::new()
-            .wrap(Logger::default())
-            .configure(api::configure)
-    })
-    .bind((host.as_str(), port))?
-    .run()
-    .await
+    HttpServer::new(|| App::new().wrap(Logger::default()).configure(api::configure))
+        .bind((host.as_str(), port))?
+        .run()
+        .await
 }
 
 #[cfg(test)]
@@ -93,6 +89,17 @@ mod tests {
         .unwrap();
     }
 
+    fn seed_report_without_nonce(db_path: &str, signature: &str, title: &str, description: &str) {
+        let conn = sqlite::open(db_path).unwrap();
+        create_schema(&conn);
+
+        conn.execute(format!(
+            "INSERT INTO reports (uuid, signature, description, title, state)
+             VALUES ('report-uuid', '{signature}', '{description}', '{title}', 'InProgress');"
+        ))
+        .unwrap();
+    }
+
     fn create_empty_db(db_path: &str) {
         let conn = sqlite::open(db_path).unwrap();
         create_schema(&conn);
@@ -153,9 +160,7 @@ mod tests {
         env::set_var("DB_PATH", &db_path);
 
         let app = test::init_service(App::new().configure(api::configure)).await;
-        let req = test::TestRequest::get()
-            .uri("/nonces/sig-456")
-            .to_request();
+        let req = test::TestRequest::get().uri("/nonces/sig-456").to_request();
         let resp = test::call_service(&app, req).await;
 
         assert_eq!(resp.status(), StatusCode::OK);
@@ -271,6 +276,88 @@ mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.code, "CONFLICT");
         assert_eq!(body.error, "Report already exists for this signature");
+    }
+
+    #[actix_web::test]
+    async fn create_report_retry_returns_ok_without_incrementing_nonce() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-retry");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let payload = r#"{
+            "signature": "sig-retry",
+            "title": "Retry title",
+            "description": "Retry description body"
+        }"#;
+
+        let first_req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(payload)
+            .to_request();
+        let first_resp = test::call_service(&app, first_req).await;
+        assert_eq!(first_resp.status(), StatusCode::CREATED);
+
+        let second_req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(payload)
+            .to_request();
+        let second_resp = test::call_service(&app, second_req).await;
+
+        assert_eq!(second_resp.status(), StatusCode::OK);
+
+        let conn = sqlite::open(&db_path).unwrap();
+        conn.iterate(
+            "SELECT COUNT(*) AS count, MAX(nonce) AS nonce FROM nonces WHERE signature = 'sig-retry';",
+            |pairs| {
+                assert_eq!(pairs[0].1.unwrap(), "1");
+                assert_eq!(pairs[1].1.unwrap(), "1");
+                true
+            },
+        )
+        .unwrap();
+    }
+
+    #[actix_web::test]
+    async fn create_report_retry_repairs_missing_nonce_for_same_payload() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-retry-repair");
+        seed_report_without_nonce(
+            &db_path,
+            "sig-repair",
+            "Repair title",
+            "Repair description body",
+        );
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-repair",
+                    "title": "Repair title",
+                    "description": "Repair description body"
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let conn = sqlite::open(&db_path).unwrap();
+        conn.iterate(
+            "SELECT nonce FROM nonces WHERE signature = 'sig-repair';",
+            |pairs| {
+                assert_eq!(pairs[0].1.unwrap(), "1");
+                true
+            },
+        )
+        .unwrap();
     }
 
     #[actix_web::test]

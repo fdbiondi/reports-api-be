@@ -1,7 +1,8 @@
-use std::{env, fmt, str::FromStr};
+use std::{fmt, str::FromStr};
 
 use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 
+use crate::model::db::open_connection;
 use serde::Serialize;
 use sqlite::{Connection, Error as sqERR, State as StateSQLite};
 use strum_macros::{Display, EnumString};
@@ -75,29 +76,21 @@ impl ResponseError for ReportErr {
     }
 }
 
-fn open_connection() -> Result<Connection, ReportErr> {
-    let db_path = env::var("DB_PATH").unwrap_or_else(|_| "data/data.db".to_string());
-    let conn = sqlite::open(db_path);
-
-    if conn.is_err() {
-        let err = conn.err().unwrap();
-
-        return Err(ReportErr::DbErr(err));
-    }
-
-    Ok(conn.unwrap())
-}
-
 // signature NVARCHAR(132) PRIMARY KEY NOT NULL
 // description TEXT NOT NULL
 // title NVARCHAR(50) NOT NULL)
 impl Report {
-    pub fn create(
+    pub fn find(signature: String) -> Result<Report, ReportErr> {
+        let connection = open_connection().map_err(ReportErr::DbErr)?;
+        Self::find_in_connection(&connection, &signature)
+    }
+
+    pub fn create_in_connection(
+        conn: &Connection,
         signature: String,
         title: String,
         description: String,
     ) -> Result<Report, ReportErr> {
-        let conn = open_connection()?;
         let query = "INSERT INTO reports (uuid, signature, description, title, state) VALUES (:uuid, :signature, :description, :title, :state);";
         let mut db = conn.prepare(query)?;
 
@@ -113,16 +106,11 @@ impl Report {
         Ok(report)
     }
 
-    pub fn find(signature: String) -> Result<Report, ReportErr> {
-        let connection = match open_connection() {
-            Ok(db) => db,
-            Err(err) => return Err(err),
-        };
-
+    pub fn find_in_connection(conn: &Connection, signature: &str) -> Result<Report, ReportErr> {
         let query = "SELECT * FROM reports WHERE signature = :signature";
-        let mut statement = connection.prepare(query)?;
+        let mut statement = conn.prepare(query)?;
 
-        statement.bind((":signature", signature.as_str()))?;
+        statement.bind((":signature", signature))?;
 
         match statement.next() {
             Ok(state) => match state {
@@ -135,8 +123,12 @@ impl Report {
                 }),
                 StateSQLite::Done => Err(ReportErr::NotFound(String::from("Report Not found!"))),
             },
-            Err(err) => return Err(ReportErr::DbErr(err)),
+            Err(err) => Err(ReportErr::DbErr(err)),
         }
+    }
+
+    pub fn matches_payload(&self, title: &str, description: &str) -> bool {
+        self.title == title && self.description == description
     }
 
     pub fn new(signature: String, title: String, description: String) -> Report {

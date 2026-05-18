@@ -1,9 +1,11 @@
 use crate::api::error_response;
-use crate::model::nonce::Nonce;
+use crate::model::db::open_connection;
+use crate::model::nonce::{Nonce, NonceErr};
 use crate::model::report::{Report, ReportErr};
 
 use actix_web::{get, http::StatusCode, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
+use sqlite::Connection;
 
 #[get("/reports/{signature}")]
 pub async fn get_report(signature: web::Path<String>) -> Result<HttpResponse, ReportErr> {
@@ -66,6 +68,29 @@ fn validate_and_normalize(payload: &PostReportRequest) -> Result<ValidatedReport
     })
 }
 
+fn rollback_transaction(conn: &Connection) {
+    let _ = conn.execute("ROLLBACK;");
+}
+
+fn ensure_nonce_for_retry(conn: &Connection, signature: &str) -> Result<Nonce, HttpResponse> {
+    match Nonce::find_in_connection(conn, signature) {
+        Ok(nonce) => Ok(nonce),
+        Err(NonceErr::NotFound(_)) => Nonce::create_in_connection(conn, signature.to_string())
+            .map_err(|_| {
+                error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    "Failed to repair nonce for retried report",
+                )
+            }),
+        Err(NonceErr::DbErr(_)) => Err(error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "Failed to fetch nonce",
+        )),
+    }
+}
+
 #[post("/reports")]
 pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
     let payload = match validate_and_normalize(&data) {
@@ -75,27 +100,9 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
         }
     };
 
-    // create report from data
-    let report = Report::create(
-        payload.signature.to_string(),
-        payload.title.to_string(),
-        payload.description.to_string(),
-    );
-
-    match report {
-        Ok(report) => report,
-        Err(ReportErr::NotFound(message)) => {
-            return error_response(StatusCode::NOT_FOUND, "NOT_FOUND", message);
-        }
-        Err(ReportErr::DbErr(err)) => {
-            let err_message = err.to_string();
-            if err_message.contains("UNIQUE constraint failed") {
-                return error_response(
-                    StatusCode::CONFLICT,
-                    "CONFLICT",
-                    "Report already exists for this signature",
-                );
-            }
+    let conn = match open_connection() {
+        Ok(conn) => conn,
+        Err(_) => {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
@@ -104,31 +111,93 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> HttpResponse {
         }
     };
 
-    // find nonce from signature
-    let nonce = match Nonce::find(payload.signature.to_string()) {
-        Ok(nonce) => match nonce.increment() {
-            Ok(nonce) => nonce,
-            Err(_) => {
-                return error_response(
+    if conn.execute("BEGIN IMMEDIATE TRANSACTION;").is_err() {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "Failed to start transaction",
+        );
+    }
+
+    let outcome = match Report::find_in_connection(&conn, &payload.signature) {
+        Ok(existing_report) => {
+            if !existing_report.matches_payload(&payload.title, &payload.description) {
+                Err(error_response(
+                    StatusCode::CONFLICT,
+                    "CONFLICT",
+                    "Report already exists for this signature",
+                ))
+            } else {
+                ensure_nonce_for_retry(&conn, &payload.signature)
+                    .map(|nonce| (StatusCode::OK, nonce))
+            }
+        }
+        Err(ReportErr::NotFound(_)) => {
+            if Report::create_in_connection(
+                &conn,
+                payload.signature.to_string(),
+                payload.title.to_string(),
+                payload.description.to_string(),
+            )
+            .is_err()
+            {
+                Err(error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "INTERNAL_ERROR",
-                    "Failed to update nonce",
-                );
+                    "Failed to create report",
+                ))
+            } else {
+                match Nonce::find_in_connection(&conn, &payload.signature) {
+                    Ok(nonce) => nonce.increment_in_connection(&conn).map_err(|_| {
+                        error_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "INTERNAL_ERROR",
+                            "Failed to update nonce",
+                        )
+                    }),
+                    Err(NonceErr::NotFound(_)) => {
+                        Nonce::create_in_connection(&conn, payload.signature.to_string()).map_err(
+                            |_| {
+                                error_response(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    "INTERNAL_ERROR",
+                                    "Failed to create nonce",
+                                )
+                            },
+                        )
+                    }
+                    Err(NonceErr::DbErr(_)) => Err(error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "INTERNAL_ERROR",
+                        "Failed to fetch nonce",
+                    )),
+                }
+                .map(|nonce| (StatusCode::CREATED, nonce))
             }
-        },
-        // if not exists -> insert nonce
-        Err(_) => match Nonce::create(payload.signature.to_string()) {
-            Ok(nonce) => nonce,
-            Err(_) => {
-                return error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "INTERNAL_ERROR",
-                    "Failed to create nonce",
-                );
-            }
-        },
+        }
+        Err(ReportErr::DbErr(_)) => Err(error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "Failed to create report",
+        )),
     };
 
-    // return nonce
-    HttpResponse::Created().json(nonce)
+    match outcome {
+        Ok((status, nonce)) => {
+            if conn.execute("COMMIT;").is_err() {
+                rollback_transaction(&conn);
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    "Failed to commit transaction",
+                );
+            }
+
+            HttpResponse::build(status).json(nonce)
+        }
+        Err(response) => {
+            rollback_transaction(&conn);
+            response
+        }
+    }
 }

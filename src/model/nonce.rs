@@ -1,7 +1,7 @@
 use core::result::Result;
-use std::env;
 use std::fmt;
 
+use crate::model::db::open_connection;
 use serde::Serialize;
 use sqlite::{Connection, Error as sqERR, State as StateSQLite};
 use uuid::Uuid;
@@ -16,14 +16,14 @@ pub struct Nonce {
 #[derive(Debug)]
 pub enum NonceErr {
     DbErr(sqERR),
-    Empty(String),
+    NotFound(String),
 }
 
 impl fmt::Display for NonceErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NonceErr::DbErr(err) => write!(f, "Database error: {err}"),
-            NonceErr::Empty(message) => write!(f, "{message}"),
+            NonceErr::NotFound(message) => write!(f, "{message}"),
         }
     }
 }
@@ -36,26 +36,12 @@ impl From<sqERR> for NonceErr {
 
 impl From<String> for NonceErr {
     fn from(s: String) -> Self {
-        NonceErr::Empty(s)
+        NonceErr::NotFound(s)
     }
-}
-
-fn open_connection() -> Result<Connection, NonceErr> {
-    let db_path = env::var("DB_PATH").unwrap_or_else(|_| "data/data.db".to_string());
-    let conn = sqlite::open(db_path);
-
-    if conn.is_err() {
-        let err = conn.err().unwrap();
-
-        return Err(NonceErr::DbErr(err));
-    }
-
-    Ok(conn.unwrap())
 }
 
 impl Nonce {
-    pub fn create(signature: String) -> Result<Nonce, NonceErr> {
-        let conn = open_connection()?;
+    pub fn create_in_connection(conn: &Connection, signature: String) -> Result<Nonce, NonceErr> {
         let mut db =
             conn.prepare("INSERT INTO nonces (uuid, signature, nonce) VALUES (?, ?, ?);")?;
 
@@ -69,8 +55,7 @@ impl Nonce {
         Ok(nonce)
     }
 
-    pub fn increment(&self) -> Result<Nonce, NonceErr> {
-        let conn = open_connection()?;
+    pub fn increment_in_connection(&self, conn: &Connection) -> Result<Nonce, NonceErr> {
         let query = "UPDATE nonces SET nonce = :nonce WHERE uuid = :uuid";
         let mut db = conn.prepare(query)?;
 
@@ -81,27 +66,21 @@ impl Nonce {
 
         db.next()?;
 
-        let nonce = Nonce::find(self.signature.to_string())?;
+        let nonce = Nonce::find_in_connection(conn, &self.signature)?;
 
         Ok(nonce)
     }
 
-    pub fn find(nonce: String) -> Result<Nonce, String> {
-        let connection = match open_connection() {
-            Ok(db) => db,
-            Err(_) => return Err("Connection failed".to_string()),
-        };
+    pub fn find(signature: String) -> Result<Nonce, NonceErr> {
+        let connection = open_connection().map_err(NonceErr::DbErr)?;
+        Self::find_in_connection(&connection, &signature)
+    }
 
+    pub fn find_in_connection(conn: &Connection, signature: &str) -> Result<Nonce, NonceErr> {
         let query = "SELECT * FROM nonces where signature = :signature";
+        let mut statement = conn.prepare(query)?;
 
-        let mut statement = match connection.prepare(query) {
-            Ok(stmt) => stmt,
-            Err(_) => return Err("Prepare Statement failed".to_string()),
-        };
-
-        if statement.bind((":signature", nonce.as_str())).is_err() {
-            return Err("Bind Statement failed".to_string());
-        }
+        statement.bind((":signature", signature))?;
 
         match statement.next() {
             Ok(state) => match state {
@@ -110,9 +89,9 @@ impl Nonce {
                     signature: statement.read::<String, _>(1).unwrap(),
                     nonce: statement.read::<i64, _>(2).unwrap() as i32,
                 }),
-                StateSQLite::Done => Err("Not Found".to_string()),
+                StateSQLite::Done => Err(NonceErr::NotFound("Nonce not found!".to_string())),
             },
-            Err(_) => Err("Not Found".to_string()),
+            Err(err) => Err(NonceErr::DbErr(err)),
         }
     }
 
