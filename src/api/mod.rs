@@ -1,6 +1,8 @@
 pub mod health;
 pub mod nonces;
 pub mod reports;
+#[cfg(test)]
+mod tests;
 
 use crate::error::{ApiError, ApiErrorDetail};
 use actix_web::{
