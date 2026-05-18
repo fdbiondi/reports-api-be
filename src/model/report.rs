@@ -1,7 +1,5 @@
 use std::{fmt, str::FromStr};
 
-use actix_web::{http::StatusCode, HttpResponse, ResponseError};
-
 use crate::model::db::open_connection;
 use serde::Serialize;
 use sqlite::{Connection, Error as sqERR, State as StateSQLite};
@@ -48,31 +46,6 @@ impl From<sqERR> for ReportErr {
 impl From<String> for ReportErr {
     fn from(s: String) -> Self {
         ReportErr::NotFound(s)
-    }
-}
-
-impl ResponseError for ReportErr {
-    fn error_response(&self) -> HttpResponse {
-        #[derive(Serialize)]
-        struct ErrorResponse {
-            code: String,
-            error: String,
-        }
-
-        HttpResponse::build(self.status_code()).json(ErrorResponse {
-            code: match self {
-                ReportErr::NotFound(_) => "NOT_FOUND".to_string(),
-                ReportErr::DbErr(_) => "INTERNAL_ERROR".to_string(),
-            },
-            error: self.to_string(),
-        })
-    }
-
-    fn status_code(&self) -> StatusCode {
-        match self {
-            ReportErr::NotFound(_) => StatusCode::NOT_FOUND,
-            ReportErr::DbErr(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        }
     }
 }
 

@@ -1,4 +1,5 @@
 mod api;
+mod error;
 mod model;
 
 use actix_web::{middleware::Logger, App, HttpServer};
@@ -106,9 +107,16 @@ mod tests {
     }
 
     #[derive(Deserialize)]
+    struct ErrorDetailBody {
+        field: String,
+        issue: String,
+    }
+
+    #[derive(Deserialize)]
     struct ErrorBody {
         code: String,
         error: String,
+        details: Option<Vec<ErrorDetailBody>>,
     }
 
     #[actix_web::test]
@@ -184,6 +192,7 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body.code, "NOT_FOUND");
         assert_eq!(body.error, "Nonce not found!");
+        assert!(body.details.is_none());
     }
 
     #[actix_web::test]
@@ -276,6 +285,7 @@ mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.code, "CONFLICT");
         assert_eq!(body.error, "Report already exists for this signature");
+        assert!(body.details.is_none());
     }
 
     #[actix_web::test]
@@ -384,6 +394,7 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body.code, "INVALID_JSON");
         assert!(body.error.starts_with("Invalid JSON payload:"));
+        assert!(body.details.is_none());
     }
 
     #[actix_web::test]
@@ -411,7 +422,11 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body.code, "VALIDATION_ERROR");
-        assert_eq!(body.error, "Field 'signature' cannot be empty");
+        assert_eq!(body.error, "Validation failed");
+        let details = body.details.expect("validation details missing");
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].field, "signature");
+        assert_eq!(details[0].issue, "cannot be empty");
     }
 
     #[actix_web::test]
@@ -478,6 +493,7 @@ mod tests {
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.code, "INTERNAL_ERROR");
         assert_eq!(body.error, "Failed to create report");
+        assert!(body.details.is_none());
     }
 
     #[actix_web::test]
@@ -495,6 +511,7 @@ mod tests {
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.code, "INTERNAL_ERROR");
-        assert!(body.error.starts_with("Database error:"));
+        assert_eq!(body.error, "Failed to fetch report");
+        assert!(body.details.is_none());
     }
 }
