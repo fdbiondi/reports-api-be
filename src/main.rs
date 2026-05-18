@@ -34,6 +34,7 @@ mod tests {
     use actix_web::{http::StatusCode, test};
     use serde::Deserialize;
     use sqlite::Connection;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_db_path(test_name: &str) -> String {
@@ -101,6 +102,20 @@ mod tests {
     fn create_empty_db(db_path: &str) {
         let conn = sqlite::open(db_path).unwrap();
         create_schema(&conn);
+    }
+
+    fn create_reports_only_db(db_path: &str) {
+        let conn = sqlite::open(db_path).unwrap();
+        conn.execute(
+            "CREATE TABLE reports (
+                uuid NVARCHAR(36) UNIQUE NOT NULL,
+                signature NVARCHAR(132) PRIMARY KEY NOT NULL,
+                description TEXT NOT NULL,
+                title NVARCHAR(50) NOT NULL,
+                state NVARCHAR(12) NOT NULL
+            );",
+        )
+        .unwrap();
     }
 
     #[derive(Deserialize)]
@@ -521,6 +536,121 @@ mod tests {
         assert_eq!(details[1].issue, "report");
         assert_eq!(details[2].field, "signature");
         assert_eq!(details[2].issue, "sig-db-error");
+    }
+
+    #[actix_web::test]
+    async fn create_report_returns_internal_error_when_db_is_locked() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-db-locked");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let lock_conn = sqlite::open(&db_path).unwrap();
+        lock_conn.execute("BEGIN EXCLUSIVE;").unwrap();
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-locked",
+                    "title": "Locked title",
+                    "description": "Locked description body"
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
+
+        lock_conn.execute("ROLLBACK;").unwrap();
+
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "INTERNAL_ERROR");
+        assert_eq!(body.error, "Database operation failed");
+        let details = body.details.expect("internal details missing");
+        assert_eq!(details.len(), 3);
+        assert_eq!(details[0].field, "operation");
+        assert_eq!(details[0].issue, "begin_transaction");
+        assert_eq!(details[1].field, "resource");
+        assert_eq!(details[1].issue, "report");
+        assert_eq!(details[2].field, "signature");
+        assert_eq!(details[2].issue, "sig-locked");
+    }
+
+    #[actix_web::test]
+    async fn get_report_returns_internal_error_for_corrupt_db_file() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("get-report-corrupt-db");
+        fs::write(&db_path, b"not-a-sqlite-database").unwrap();
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::get()
+            .uri("/reports/corrupt-signature")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
+
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "INTERNAL_ERROR");
+        assert_eq!(body.error, "Database operation failed");
+        let details = body.details.expect("internal details missing");
+        assert_eq!(details.len(), 3);
+        assert_eq!(details[0].field, "operation");
+        assert_eq!(details[0].issue, "fetch");
+        assert_eq!(details[1].field, "resource");
+        assert_eq!(details[1].issue, "report");
+        assert_eq!(details[2].field, "signature");
+        assert_eq!(details[2].issue, "corrupt-signature");
+    }
+
+    #[actix_web::test]
+    async fn create_report_rolls_back_when_nonce_table_is_missing() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-missing-nonce-table");
+        create_reports_only_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let app = test::init_service(App::new().configure(api::configure)).await;
+        let req = test::TestRequest::post()
+            .uri("/reports")
+            .insert_header(("Content-Type", "application/json"))
+            .set_payload(
+                r#"{
+                    "signature": "sig-missing-nonce-table",
+                    "title": "Schema failure",
+                    "description": "Nonce table is missing in this database"
+                }"#,
+            )
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
+
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.code, "INTERNAL_ERROR");
+        assert_eq!(body.error, "Database operation failed");
+        let details = body.details.expect("internal details missing");
+        assert_eq!(details.len(), 3);
+        assert_eq!(details[0].field, "operation");
+        assert_eq!(details[0].issue, "fetch");
+        assert_eq!(details[1].field, "resource");
+        assert_eq!(details[1].issue, "nonce");
+        assert_eq!(details[2].field, "signature");
+        assert_eq!(details[2].issue, "sig-missing-nonce-table");
+
+        let conn = sqlite::open(&db_path).unwrap();
+        conn.iterate(
+            "SELECT COUNT(*) AS count FROM reports WHERE signature = 'sig-missing-nonce-table';",
+            |pairs| {
+                assert_eq!(pairs[0].1.unwrap(), "0");
+                true
+            },
+        )
+        .unwrap();
     }
 
     #[actix_web::test]
