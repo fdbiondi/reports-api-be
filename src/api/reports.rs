@@ -106,13 +106,7 @@ fn ensure_nonce_for_retry(conn: &Connection, signature: &str) -> Result<Nonce, A
     }
 }
 
-#[post("/reports")]
-pub async fn create_report(data: web::Json<PostReportRequest>) -> Result<HttpResponse, ApiError> {
-    let payload = match validate_and_normalize(&data) {
-        Ok(payload) => payload,
-        Err(err) => return Err(err),
-    };
-
+fn create_report_response(payload: ValidatedReportInput) -> Result<HttpResponse, ApiError> {
     let conn = match open_connection() {
         Ok(conn) => conn,
         Err(_) => {
@@ -196,5 +190,126 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> Result<HttpRes
             rollback_transaction(&conn);
             Err(response)
         }
+    }
+}
+
+#[post("/reports")]
+pub async fn create_report(data: web::Json<PostReportRequest>) -> Result<HttpResponse, ApiError> {
+    let payload = match validate_and_normalize(&data) {
+        Ok(payload) => payload,
+        Err(err) => return Err(err),
+    };
+
+    create_report_response(payload)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::env_lock;
+    use actix_web::ResponseError;
+    use sqlite::Connection;
+    use std::env;
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_db_path(test_name: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+
+        env::temp_dir()
+            .join(format!("reports-api-{test_name}-{nanos}.db"))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn create_schema(conn: &Connection) {
+        conn.execute(
+            "CREATE TABLE reports (
+                uuid NVARCHAR(36) UNIQUE NOT NULL,
+                signature NVARCHAR(132) PRIMARY KEY NOT NULL,
+                description TEXT NOT NULL,
+                title NVARCHAR(50) NOT NULL,
+                state NVARCHAR(12) NOT NULL
+            );",
+        )
+        .unwrap();
+
+        conn.execute(
+            "CREATE TABLE nonces (
+                uuid NVARCHAR(36) UNIQUE NOT NULL,
+                signature NVARCHAR(132) PRIMARY KEY NOT NULL,
+                nonce INTEGER NOT NULL
+            );",
+        )
+        .unwrap();
+    }
+
+    fn create_empty_db(db_path: &str) {
+        let conn = sqlite::open(db_path).unwrap();
+        create_schema(&conn);
+    }
+
+    fn response_status(result: Result<HttpResponse, ApiError>) -> StatusCode {
+        match result {
+            Ok(response) => response.status(),
+            Err(err) => err.status_code(),
+        }
+    }
+
+    #[test]
+    fn concurrent_create_report_is_retry_safe_for_same_payload() {
+        let _guard = env_lock().lock().unwrap();
+        let db_path = temp_db_path("create-report-concurrent");
+        create_empty_db(&db_path);
+        env::set_var("DB_PATH", &db_path);
+
+        let barrier = Arc::new(Barrier::new(2));
+        let mut handles = Vec::new();
+
+        for _ in 0..2 {
+            let barrier = barrier.clone();
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+
+                response_status(create_report_response(ValidatedReportInput {
+                    signature: "sig-concurrent".to_string(),
+                    title: "Concurrent title".to_string(),
+                    description: "Concurrent description body".to_string(),
+                }))
+            }));
+        }
+
+        let mut statuses = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>();
+        statuses.sort();
+
+        assert_eq!(statuses, vec![StatusCode::OK, StatusCode::CREATED]);
+
+        let conn = sqlite::open(&db_path).unwrap();
+        conn.iterate(
+            "SELECT COUNT(*) AS reports FROM reports WHERE signature = 'sig-concurrent';",
+            |pairs| {
+                assert_eq!(pairs[0].1.unwrap(), "1");
+                true
+            },
+        )
+        .unwrap();
+
+        conn.iterate(
+            "SELECT COUNT(*) AS nonces, MAX(nonce) AS nonce
+             FROM nonces WHERE signature = 'sig-concurrent';",
+            |pairs| {
+                assert_eq!(pairs[0].1.unwrap(), "1");
+                assert_eq!(pairs[1].1.unwrap(), "1");
+                true
+            },
+        )
+        .unwrap();
     }
 }

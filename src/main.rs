@@ -1,6 +1,8 @@
 mod api;
 mod error;
 mod model;
+#[cfg(test)]
+mod test_support;
 
 use actix_web::{middleware::Logger, App, HttpServer};
 use dotenv::dotenv;
@@ -28,16 +30,11 @@ async fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::env_lock;
     use actix_web::{http::StatusCode, test};
     use serde::Deserialize;
     use sqlite::Connection;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn temp_db_path(test_name: &str) -> String {
         let nanos = SystemTime::now()

@@ -4,5 +4,11 @@ use sqlite::{Connection, Error as SqlError};
 
 pub fn open_connection() -> Result<Connection, SqlError> {
     let db_path = env::var("DB_PATH").unwrap_or_else(|_| "data/data.db".to_string());
-    sqlite::open(db_path)
+    let connection = sqlite::open(db_path)?;
+
+    // Let concurrent requests wait briefly on SQLite write locks instead of
+    // failing immediately with "database is locked".
+    connection.execute("PRAGMA busy_timeout = 1000;")?;
+
+    Ok(connection)
 }
