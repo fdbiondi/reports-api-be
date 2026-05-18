@@ -66,6 +66,7 @@ impl Nonce {
 
         db.next()?;
 
+        // Re-read row from DB so response reflects persisted value, not only in-memory math.
         let nonce = Nonce::find_in_connection(conn, &self.signature)?;
 
         Ok(nonce)
@@ -99,6 +100,7 @@ impl Nonce {
         Nonce {
             uuid: Uuid::new_v4().to_string(),
             signature,
+            // First successful report creation owns nonce value 1.
             nonce: 1,
         }
     }

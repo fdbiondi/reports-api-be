@@ -67,8 +67,19 @@ impl ApiError {
     }
 
     pub fn with_details(mut self, details: Vec<ApiErrorDetail>) -> Self {
-        self.details = Some(details);
+        // Keep base error context and let handlers append request-specific detail.
+        match self.details.as_mut() {
+            Some(existing) => existing.extend(details),
+            None => self.details = Some(details),
+        }
         self
+    }
+
+    pub fn db_failure(operation: impl Into<String>, resource: impl Into<String>) -> Self {
+        Self::internal("Database operation failed").with_details(vec![
+            ApiErrorDetail::new("operation", operation),
+            ApiErrorDetail::new("resource", resource),
+        ])
     }
 }
 
@@ -95,8 +106,9 @@ impl ResponseError for ApiError {
 impl From<ReportErr> for ApiError {
     fn from(value: ReportErr) -> Self {
         match value {
-            ReportErr::NotFound(message) => ApiError::not_found(message),
-            ReportErr::DbErr(_) => ApiError::internal("Failed to fetch report"),
+            ReportErr::NotFound(message) => ApiError::not_found(message)
+                .with_details(vec![ApiErrorDetail::new("resource", "report")]),
+            ReportErr::DbErr(_) => ApiError::db_failure("fetch", "report"),
         }
     }
 }
@@ -104,8 +116,9 @@ impl From<ReportErr> for ApiError {
 impl From<NonceErr> for ApiError {
     fn from(value: NonceErr) -> Self {
         match value {
-            NonceErr::NotFound(message) => ApiError::not_found(message),
-            NonceErr::DbErr(_) => ApiError::internal("Failed to fetch nonce"),
+            NonceErr::NotFound(message) => ApiError::not_found(message)
+                .with_details(vec![ApiErrorDetail::new("resource", "nonce")]),
+            NonceErr::DbErr(_) => ApiError::db_failure("fetch", "nonce"),
         }
     }
 }

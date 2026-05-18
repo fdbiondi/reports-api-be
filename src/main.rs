@@ -156,8 +156,18 @@ mod tests {
             .uri("/reports/does-not-exist")
             .to_request();
         let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: ErrorBody = test::read_body_json(resp).await;
 
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "NOT_FOUND");
+        assert_eq!(body.error, "Report Not found!");
+        let details = body.details.expect("not found details missing");
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0].field, "resource");
+        assert_eq!(details[0].issue, "report");
+        assert_eq!(details[1].field, "signature");
+        assert_eq!(details[1].issue, "does-not-exist");
     }
 
     #[actix_web::test]
@@ -192,7 +202,12 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body.code, "NOT_FOUND");
         assert_eq!(body.error, "Nonce not found!");
-        assert!(body.details.is_none());
+        let details = body.details.expect("not found details missing");
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0].field, "resource");
+        assert_eq!(details[0].issue, "nonce");
+        assert_eq!(details[1].field, "signature");
+        assert_eq!(details[1].issue, "does-not-exist");
     }
 
     #[actix_web::test]
@@ -285,7 +300,12 @@ mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.code, "CONFLICT");
         assert_eq!(body.error, "Report already exists for this signature");
-        assert!(body.details.is_none());
+        let details = body.details.expect("conflict details missing");
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0].field, "resource");
+        assert_eq!(details[0].issue, "report");
+        assert_eq!(details[1].field, "signature");
+        assert_eq!(details[1].issue, "sig-dup");
     }
 
     #[actix_web::test]
@@ -394,7 +414,10 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body.code, "INVALID_JSON");
         assert!(body.error.starts_with("Invalid JSON payload:"));
-        assert!(body.details.is_none());
+        let details = body.details.expect("json details missing");
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].field, "body");
+        assert_eq!(details[0].issue, "invalid JSON payload");
     }
 
     #[actix_web::test]
@@ -492,8 +515,15 @@ mod tests {
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.code, "INTERNAL_ERROR");
-        assert_eq!(body.error, "Failed to create report");
-        assert!(body.details.is_none());
+        assert_eq!(body.error, "Database operation failed");
+        let details = body.details.expect("internal details missing");
+        assert_eq!(details.len(), 3);
+        assert_eq!(details[0].field, "operation");
+        assert_eq!(details[0].issue, "open");
+        assert_eq!(details[1].field, "resource");
+        assert_eq!(details[1].issue, "report");
+        assert_eq!(details[2].field, "signature");
+        assert_eq!(details[2].issue, "sig-db-error");
     }
 
     #[actix_web::test]
@@ -511,7 +541,14 @@ mod tests {
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.code, "INTERNAL_ERROR");
-        assert_eq!(body.error, "Failed to fetch report");
-        assert!(body.details.is_none());
+        assert_eq!(body.error, "Database operation failed");
+        let details = body.details.expect("internal details missing");
+        assert_eq!(details.len(), 3);
+        assert_eq!(details[0].field, "operation");
+        assert_eq!(details[0].issue, "fetch");
+        assert_eq!(details[1].field, "resource");
+        assert_eq!(details[1].issue, "report");
+        assert_eq!(details[2].field, "signature");
+        assert_eq!(details[2].issue, "any-signature");
     }
 }

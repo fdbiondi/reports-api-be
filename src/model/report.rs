@@ -110,6 +110,7 @@ impl Report {
             signature,
             description,
             title,
+            // New reports always enter workflow in pending execution state.
             state: ReportState::InProgress,
         }
     }
