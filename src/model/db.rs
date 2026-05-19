@@ -12,3 +12,15 @@ pub fn open_connection() -> Result<Connection, SqlError> {
 
     Ok(connection)
 }
+
+pub fn begin_immediate_transaction(conn: &Connection) -> Result<(), SqlError> {
+    conn.execute("BEGIN IMMEDIATE TRANSACTION;")
+}
+
+pub fn commit_transaction(conn: &Connection) -> Result<(), SqlError> {
+    conn.execute("COMMIT;")
+}
+
+pub fn rollback_transaction(conn: &Connection) {
+    let _ = conn.execute("ROLLBACK;");
+}

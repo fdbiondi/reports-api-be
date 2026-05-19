@@ -1,11 +1,9 @@
 use crate::error::{ApiError, ApiErrorDetail};
-use crate::model::db::open_connection;
-use crate::model::nonce::{Nonce, NonceErr};
 use crate::model::report::{Report, ReportErr};
+use crate::model::report_submission::{create_or_retry, CreateReportInput, CreateReportResult};
 
 use actix_web::{get, http::StatusCode, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use sqlite::Connection;
 
 #[get("/reports/{signature}")]
 pub async fn get_report(signature: web::Path<String>) -> Result<HttpResponse, ApiError> {
@@ -86,113 +84,6 @@ fn validate_and_normalize(payload: &PostReportRequest) -> Result<ValidatedReport
     })
 }
 
-fn rollback_transaction(conn: &Connection) {
-    let _ = conn.execute("ROLLBACK;");
-}
-
-fn ensure_nonce_for_retry(conn: &Connection, signature: &str) -> Result<Nonce, ApiError> {
-    match Nonce::find_in_connection(conn, signature) {
-        Ok(nonce) => Ok(nonce),
-        // Retry path: prior attempt may have inserted report but failed before nonce write.
-        Err(NonceErr::NotFound(_)) => Nonce::create_in_connection(conn, signature.to_string())
-            .map_err(|_| {
-                ApiError::internal("Failed to repair nonce for retried report").with_details(vec![
-                    ApiErrorDetail::new("operation", "repair_nonce"),
-                    ApiErrorDetail::new("signature", signature),
-                ])
-            }),
-        Err(NonceErr::DbErr(_)) => Err(ApiError::db_failure("fetch", "nonce")
-            .with_details(vec![ApiErrorDetail::new("signature", signature)])),
-    }
-}
-
-fn create_report_response(payload: ValidatedReportInput) -> Result<HttpResponse, ApiError> {
-    let conn = match open_connection() {
-        Ok(conn) => conn,
-        Err(_) => {
-            return Err(ApiError::db_failure("open", "report")
-                .with_details(vec![ApiErrorDetail::new("signature", &payload.signature)]));
-        }
-    };
-
-    if conn.execute("BEGIN IMMEDIATE TRANSACTION;").is_err() {
-        return Err(ApiError::db_failure("begin_transaction", "report")
-            .with_details(vec![ApiErrorDetail::new("signature", &payload.signature)]));
-    }
-
-    let outcome = match Report::find_in_connection(&conn, &payload.signature) {
-        Ok(existing_report) => {
-            // Same signature + different business payload is conflict. Same normalized payload
-            // is treated as idempotent retry and must not mutate nonce again.
-            if !existing_report.matches_payload(&payload.title, &payload.description) {
-                Err(
-                    ApiError::conflict("Report already exists for this signature").with_details(
-                        vec![
-                            ApiErrorDetail::new("resource", "report"),
-                            ApiErrorDetail::new("signature", &payload.signature),
-                        ],
-                    ),
-                )
-            } else {
-                // Same normalized payload counts as safe retry, not duplicate mutation.
-                ensure_nonce_for_retry(&conn, &payload.signature)
-                    .map(|nonce| (StatusCode::OK, nonce))
-            }
-        }
-        Err(ReportErr::NotFound(_)) => {
-            if Report::create_in_connection(
-                &conn,
-                payload.signature.to_string(),
-                payload.title.to_string(),
-                payload.description.to_string(),
-            )
-            .is_err()
-            {
-                Err(ApiError::db_failure("insert", "report")
-                    .with_details(vec![ApiErrorDetail::new("signature", &payload.signature)]))
-            } else {
-                match Nonce::find_in_connection(&conn, &payload.signature) {
-                    Ok(nonce) => nonce.increment_in_connection(&conn).map_err(|_| {
-                        ApiError::db_failure("update", "nonce").with_details(vec![
-                            ApiErrorDetail::new("signature", &payload.signature),
-                        ])
-                    }),
-                    Err(NonceErr::NotFound(_)) => {
-                        Nonce::create_in_connection(&conn, payload.signature.to_string()).map_err(
-                            |_| {
-                                ApiError::db_failure("insert", "nonce").with_details(vec![
-                                    ApiErrorDetail::new("signature", &payload.signature),
-                                ])
-                            },
-                        )
-                    }
-                    Err(NonceErr::DbErr(_)) => Err(ApiError::db_failure("fetch", "nonce")
-                        .with_details(vec![ApiErrorDetail::new("signature", &payload.signature)])),
-                }
-                .map(|nonce| (StatusCode::CREATED, nonce))
-            }
-        }
-        Err(ReportErr::DbErr(_)) => Err(ApiError::db_failure("fetch", "report")
-            .with_details(vec![ApiErrorDetail::new("signature", &payload.signature)])),
-    };
-
-    match outcome {
-        Ok((status, nonce)) => {
-            if conn.execute("COMMIT;").is_err() {
-                rollback_transaction(&conn);
-                return Err(ApiError::db_failure("commit_transaction", "report")
-                    .with_details(vec![ApiErrorDetail::new("signature", &payload.signature)]));
-            }
-
-            Ok(HttpResponse::build(status).json(nonce))
-        }
-        Err(response) => {
-            rollback_transaction(&conn);
-            Err(response)
-        }
-    }
-}
-
 #[post("/reports")]
 pub async fn create_report(data: web::Json<PostReportRequest>) -> Result<HttpResponse, ApiError> {
     let payload = match validate_and_normalize(&data) {
@@ -200,7 +91,15 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> Result<HttpRes
         Err(err) => return Err(err),
     };
 
-    create_report_response(payload)
+    match create_or_retry(CreateReportInput {
+        signature: payload.signature,
+        title: payload.title,
+        description: payload.description,
+    }) {
+        Ok(CreateReportResult::Created(nonce)) => Ok(HttpResponse::Created().json(nonce)),
+        Ok(CreateReportResult::Retried(nonce)) => Ok(HttpResponse::Ok().json(nonce)),
+        Err(err) => Err(err.into()),
+    }
 }
 
 #[cfg(test)]
@@ -275,11 +174,18 @@ mod tests {
             handles.push(thread::spawn(move || {
                 barrier.wait();
 
-                response_status(create_report_response(ValidatedReportInput {
-                    signature: "sig-concurrent".to_string(),
-                    title: "Concurrent title".to_string(),
-                    description: "Concurrent description body".to_string(),
-                }))
+                response_status(
+                    create_or_retry(CreateReportInput {
+                        signature: "sig-concurrent".to_string(),
+                        title: "Concurrent title".to_string(),
+                        description: "Concurrent description body".to_string(),
+                    })
+                    .map(|result| match result {
+                        CreateReportResult::Created(nonce) => HttpResponse::Created().json(nonce),
+                        CreateReportResult::Retried(nonce) => HttpResponse::Ok().json(nonce),
+                    })
+                    .map_err(ApiError::from),
+                )
             }));
         }
 

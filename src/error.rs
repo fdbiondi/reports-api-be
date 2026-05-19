@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::model::nonce::NonceErr;
 use crate::model::report::ReportErr;
+use crate::model::report_submission::CreateReportErr;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ApiErrorDetail {
@@ -119,6 +120,25 @@ impl From<NonceErr> for ApiError {
             NonceErr::NotFound(message) => ApiError::not_found(message)
                 .with_details(vec![ApiErrorDetail::new("resource", "nonce")]),
             NonceErr::DbErr(_) => ApiError::db_failure("fetch", "nonce"),
+        }
+    }
+}
+
+impl From<CreateReportErr> for ApiError {
+    fn from(value: CreateReportErr) -> Self {
+        match value {
+            CreateReportErr::Conflict { signature } => {
+                ApiError::conflict("Report already exists for this signature").with_details(vec![
+                    ApiErrorDetail::new("resource", "report"),
+                    ApiErrorDetail::new("signature", signature),
+                ])
+            }
+            CreateReportErr::Db {
+                operation,
+                resource,
+                signature,
+            } => ApiError::db_failure(operation, resource)
+                .with_details(vec![ApiErrorDetail::new("signature", signature)]),
         }
     }
 }
