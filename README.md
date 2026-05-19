@@ -13,8 +13,9 @@ El flujo principal es:
 
 1. Un cliente crea un reporte con `POST /reports`.
 2. Si la `signature` no tiene nonce, la API crea uno con valor `1`.
-3. Si ya existe, incrementa el nonce.
-4. Luego se puede consultar el reporte o el nonce por `signature`.
+3. Si llega el mismo payload normalizado para una `signature` ya existente, la API lo trata como retry seguro y devuelve el nonce actual sin incrementarlo.
+4. Si llega la misma `signature` con distinto `title` o `description`, la API responde conflicto.
+5. Luego se puede consultar el reporte o el nonce por `signature`.
 
 ## Stack técnico
 
@@ -105,7 +106,10 @@ Normalización aplicada:
 - `signature`: `trim` de espacios al inicio/final
 - `title` y `description`: `trim` + colapso de espacios internos múltiples a uno solo
 
-Respuesta exitosa:
+Respuestas exitosas:
+
+- `201 Created`: primer create exitoso
+- `200 OK`: retry seguro con mismo payload normalizado para una `signature` ya existente
 
 ```json
 {
@@ -115,6 +119,11 @@ Respuesta exitosa:
 }
 ```
 
+Reglas de idempotencia:
+
+- misma `signature` + mismo `title`/`description` normalizados: retry seguro, no incrementa nonce
+- misma `signature` + distinto `title` o `description`: `409 Conflict`
+
 ### Formato de errores
 
 Las respuestas de error siguen un formato JSON unificado:
@@ -122,11 +131,87 @@ Las respuestas de error siguen un formato JSON unificado:
 ```json
 {
   "code": "NOT_FOUND",
-  "error": "Descripción del error"
+  "error": "Descripción del error",
+  "details": [
+    {
+      "field": "resource",
+      "issue": "report"
+    }
+  ]
 }
 ```
 
-Incluye también errores de `400 Bad Request` por payload JSON inválido.
+`details` es opcional y se usa para dar contexto estructurado a clientes.
+
+Ejemplos:
+
+Payload JSON inválido:
+
+```json
+{
+  "code": "INVALID_JSON",
+  "error": "Invalid JSON payload: ...",
+  "details": [
+    {
+      "field": "body",
+      "issue": "invalid JSON payload"
+    }
+  ]
+}
+```
+
+Validación de negocio:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "error": "Validation failed",
+  "details": [
+    {
+      "field": "signature",
+      "issue": "cannot be empty"
+    }
+  ]
+}
+```
+
+Conflicto por `signature` existente con payload distinto:
+
+```json
+{
+  "code": "CONFLICT",
+  "error": "Report already exists for this signature",
+  "details": [
+    {
+      "field": "resource",
+      "issue": "report"
+    },
+    {
+      "field": "signature",
+      "issue": "sig-dup"
+    }
+  ]
+}
+```
+
+Fallo interno de DB:
+
+```json
+{
+  "code": "INTERNAL_ERROR",
+  "error": "Database operation failed",
+  "details": [
+    {
+      "field": "operation",
+      "issue": "fetch"
+    },
+    {
+      "field": "resource",
+      "issue": "report"
+    }
+  ]
+}
+```
 
 Códigos actuales de error:
 
@@ -141,13 +226,14 @@ Códigos actuales de error:
 | Endpoint | Errores esperables |
 | --- | --- |
 | `GET /health` | - |
-| `GET /nonces/{signature}` | `NOT_FOUND`, `INVALID_JSON`* |
-| `GET /reports/{signature}` | `NOT_FOUND`, `INTERNAL_ERROR`, `INVALID_JSON`* |
-| `POST /reports` | `INVALID_JSON`, `VALIDATION_ERROR`, `CONFLICT`, `INTERNAL_ERROR`, `NOT_FOUND`** |
+| `GET /nonces/{signature}` | `NOT_FOUND`, `INTERNAL_ERROR` |
+| `GET /reports/{signature}` | `NOT_FOUND`, `INTERNAL_ERROR` |
+| `POST /reports` | `INVALID_JSON`, `VALIDATION_ERROR`, `CONFLICT`, `INTERNAL_ERROR` |
 
-\* `INVALID_JSON` aplica cuando el request incluye body JSON inválido en endpoints configurados con extractor JSON.
+Notas:
 
-\** `NOT_FOUND` queda reservado para errores explícitos de tipo `ReportErr::NotFound`.
+- `INVALID_JSON` aplica en `POST /reports` cuando el body no cumple JSON esperado.
+- `INTERNAL_ERROR` se usa también para DB bloqueada, archivo corrupto o schema roto.
 
 ## Cómo ejecutar localmente
 
@@ -241,11 +327,14 @@ cargo test
 
 Estado actual del proyecto:
 
-- Hay tests automatizados básicos de endpoints usando `actix_web::test`.
+- Hay tests automatizados de endpoints y concurrencia usando `actix_web::test`.
 - `cargo test` valida compilación y hoy cubre:
   - `GET /reports/{signature}` exitoso y no encontrado
   - `GET /nonces/{signature}` exitoso y no encontrado
-  - `POST /reports` exitoso, payload inválido, `signature` duplicada y fallo de DB
+  - `POST /reports` exitoso, retry seguro, conflicto por `signature` duplicada y payload inválido
+  - normalización de `title` y `description`
+  - concurrencia con dos creates simultáneos de mismo payload
+  - DB bloqueada, archivo corrupto y tabla `nonces` faltante con rollback
 
 ## Cómo ejecutar con Docker
 
@@ -341,9 +430,10 @@ Durante la revisión aparecieron varios puntos a tener en cuenta:
 
 - La configuración de entorno ahora se carga con `dotenv`, y la ruta de SQLite puede definirse con `DB_PATH`; si no se define, usa `data/data.db`.
 - `HOST` y `PORT` ya pueden parametrizarse, y el valor por defecto de `PORT` es `8080`, lo que simplifica la ejecución local.
-- `POST /reports` devuelve `409 Conflict` cuando ya existe un reporte para esa `signature`, y `500 Internal Server Error` ante fallos internos de DB.
+- `POST /reports` devuelve `201 Created` en create inicial, `200 OK` en retry seguro con mismo payload y `409 Conflict` si la `signature` ya existe con payload distinto.
+- Las respuestas de error exponen `code`, `error` y `details` opcional para clientes.
 
 ## Recomendaciones
 
-- Ampliar cobertura con casos de concurrencia y validaciones de formato/largo de campos.
-- Agregar tests de concurrencia/idempotencia y de base de datos bloqueada/corrupta.
+- Documentar estos contratos también en OpenAPI si el proyecto incorpora spec formal.
+- Evaluar una imagen runtime todavía más pequeña sólo si no complica operación o debugging.
