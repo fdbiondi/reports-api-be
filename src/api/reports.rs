@@ -106,6 +106,7 @@ pub async fn create_report(data: web::Json<PostReportRequest>) -> Result<HttpRes
 mod tests {
     use super::*;
     use crate::test_support::env_lock;
+    use actix_web::http::StatusCode;
     use actix_web::ResponseError;
     use sqlite::Connection;
     use std::env;

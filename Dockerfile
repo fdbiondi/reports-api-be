@@ -1,4 +1,4 @@
-FROM rust:1.85-bookworm AS base
+FROM rust:1.95.0-bookworm AS base
 
 WORKDIR /usr/src/myapp
 

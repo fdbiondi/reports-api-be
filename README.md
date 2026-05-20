@@ -20,6 +20,7 @@ El flujo principal es:
 ## Stack técnico
 
 - Rust 2021
+- Rust `1.95.0`
 - `actix-web`
 - `serde`
 - SQLite local (`data/data.db`)
@@ -39,7 +40,7 @@ El flujo principal es:
 
 ### `GET /health`
 
-Endpoint de salud para verificar que la API está levantada.
+Endpoint para verificar que la API está levantada.
 
 Respuesta exitosa:
 
@@ -240,7 +241,9 @@ Notas:
 ### Requisitos
 
 - Rust toolchain instalado (`cargo`, `rustc`)
+- Recomendado: Rust `1.95.0`
 - SQLite3 instalado
+- Docker opcional, si querés correr el proyecto containerizado
 
 ### Base de datos
 
@@ -270,13 +273,9 @@ CREATE TABLE nonces (
 );
 ```
 
-### Ejecutar con Cargo
+### Variables de entorno
 
-```bash
-cargo run
-```
-
-El servidor usa estas variables de entorno:
+El servidor usa estas variables:
 
 - `HOST`: por defecto `0.0.0.0`
 - `PORT`: por defecto `8080`
@@ -287,25 +286,57 @@ Importante:
 - La app carga variables desde un archivo `.env` usando `dotenv`.
 - El valor por defecto `8080` evita requerir privilegios elevados en la mayoría de entornos locales.
 
-Ejemplos:
+Archivo `.env` de ejemplo:
+
+```env
+HOST=127.0.0.1
+PORT=8080
+DB_PATH=data/data.db
+```
+
+### Opción 1: ejecutar con Cargo
+
+Pasos:
+
+1. Instalar dependencias del sistema y toolchain de Rust.
+2. Verificar que exista `data/data.db` o configurar `DB_PATH`.
+3. Arrancar la API:
 
 ```bash
 cargo run
 ```
 
+4. Probar el endpoint para revisar si la api esta corriendo:
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
+Ejemplo con variables explícitas:
+
 ```bash
 HOST=127.0.0.1 PORT=8080 DB_PATH=data/data.db cargo run
 ```
 
-Archivo `.env` de ejemplo:
+### Opción 2: ejecutar con Docker para desarrollo
 
-```env
-HOST=0.0.0.0
-PORT=8080
-DB_PATH=data/data.db
+```bash
+docker compose up --build
 ```
 
-Podés tomar como referencia [`.env.example`](/home/fdbiondi/dev/projects/reports-api-be/.env.example).
+o, si tu instalación usa el comando viejo:
+
+```bash
+docker-compose up --build
+```
+
+Este flujo usa el target `dev` del `Dockerfile`, monta el repo y arranca con `cargo watch`.
+
+La API queda disponible en:
+
+```text
+http://localhost:8080
+```
 
 ## Cómo compilar
 
@@ -397,6 +428,115 @@ Cuándo usarlo:
 
 - cuando querés probar la imagen final
 - cuando buscás un contenedor más chico y más cercano a despliegue
+
+## Deploy de producción con Docker
+
+### Supuestos
+
+- servidor Linux con Docker instalado
+- puerto público disponible o reverse proxy adelante
+- volumen o directorio persistente para la base SQLite
+
+### Paso 1: copiar el proyecto al servidor
+
+Por ejemplo:
+
+```bash
+git clone <repo> /opt/reports-api
+cd /opt/reports-api
+```
+
+### Paso 2: preparar directorio persistente de datos
+
+La base SQLite no debería vivir sólo dentro del contenedor si querés persistencia entre recreaciones.
+
+```bash
+mkdir -p /opt/reports-api/data
+```
+
+Si querés empezar con una base vacía, podés crearla antes o copiar una existente. Si querés usar la incluida en el repo:
+
+```bash
+cp data/data.db /opt/reports-api/data/data.db
+```
+
+### Paso 3: construir imagen de producción
+
+```bash
+docker build -t reports-api:prod .
+```
+
+### Paso 4: ejecutar el contenedor
+
+Ejemplo simple, publicando en `8080` y montando la base desde host:
+
+```bash
+docker run -d \
+  --name reports-api \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8080 \
+  -e DB_PATH=/usr/src/myapp/data/data.db \
+  -v /opt/reports-api/data:/usr/src/myapp/data \
+  reports-api:prod
+```
+
+Qué hace este comando:
+
+- levanta la app en segundo plano
+- reinicia automáticamente salvo que la detengas manualmente
+- persiste la SQLite en `/opt/reports-api/data`
+- mantiene el `HEALTHCHECK` definido en la imagen
+
+### Paso 5: verificar despliegue
+
+Revisar estado:
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
+Revisar logs:
+
+```bash
+docker logs -f reports-api
+```
+
+Revisar estado y health:
+
+```bash
+docker ps
+docker inspect --format='{{json .State.Health}}' reports-api
+```
+
+### Paso 6: actualizar a una nueva versión
+
+```bash
+cd /opt/reports-api
+git pull
+docker build -t reports-api:prod .
+docker rm -f reports-api
+docker run -d \
+  --name reports-api \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8080 \
+  -e DB_PATH=/usr/src/myapp/data/data.db \
+  -v /opt/reports-api/data:/usr/src/myapp/data \
+  reports-api:prod
+```
+
+Como la base vive en el host, la recreación del contenedor no pierde datos.
+
+### Recomendaciones de operación
+
+- poner un reverse proxy delante si vas a exponer la API a internet
+- automatizar deploy creando CI/CD pipeline
+- incluir backups del archivo SQLite
+- monitorear `docker logs` y estado de `HEALTHCHECK`
+- evitar escribir la SQLite dentro de la capa interna del contenedor
 
 ## Ejemplos de uso
 
