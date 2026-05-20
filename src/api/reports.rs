@@ -2,7 +2,7 @@ use crate::error::{ApiError, ApiErrorDetail};
 use crate::model::report::{Report, ReportErr};
 use crate::model::report_submission::{create_or_retry, CreateReportInput, CreateReportResult};
 
-use actix_web::{get, http::StatusCode, post, web, HttpResponse};
+use actix_web::{get, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 #[get("/reports/{signature}")]
